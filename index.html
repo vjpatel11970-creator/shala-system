@@ -1594,6 +1594,7 @@ WIRE["staff:relieve"] = function(){
 
 /* ---------- પગાર helpers ---------- */
 function staffName(id){ var t=S.staff.find(function(x){return x.id===id;}); return t?t.name:"—"; }
+function staffEmpNo(id){ var t=S.staff.find(function(x){return x.id===id;}); return t?(t.empNo||t.computerNo||""):""; }
 function staffGross(t){ return (Number(t.basic)||0)+(Number(t.da)||0)+(Number(t.hra)||0)+(Number(t.otherAllow)||0); }
 function staffDeduct(t){ return (Number(t.pf)||0)+(Number(t.pt)||0)+(Number(t.otherDeduct)||0); }
 function staffNet(t){ return staffGross(t)-staffDeduct(t); }
@@ -1886,6 +1887,45 @@ WIRE["staff:f24"] = function(){
 };
 
 /* ---------- પે રોલ માસ્ટર ડેટા (sub-tabs) ---------- */
+function payCodesCard(){
+  var st = S.settings;
+  return '<div class="card"><h3>વહીવટી કોડ (તમામ પે રોલ ફોર્મ માટે — એક જ વાર ભરો)</h3><div class="grid">'
+    + fld("pc_company","Company Code", st.payCompanyCode||"")
+    + fld("pc_district","District Code", st.payDistrictCode||"")
+    + fld("pc_school","School Code", st.paySchoolCode||S.school.scode||"")
+    + '</div><div style="margin-top:10px"><button class="btn sm sec" id="pc_save">કોડ સાચવો</button></div></div>';
+}
+function payCodesWire(){
+  $("pc_save").onclick = async function(){
+    S.settings.payCompanyCode = val("pc_company");
+    S.settings.payDistrictCode = val("pc_district");
+    S.settings.paySchoolCode = val("pc_school");
+    await saveMeta(); toast("કોડ સચવાયા"); render();
+  };
+}
+/* -- પ્રિન્ટ માટે સહિયારા ટુકડા (District Education Office ફોર્મેટ) -- */
+function officeHeading(title1, title2){
+  return '<div style="text-align:center;font-weight:700;font-size:15px;color:#1a3a7a">DISTRICT EDUCATION OFFICE : '+esc((S.school.district||"").toUpperCase())+'</div>'
+    + '<div style="text-align:center;font-weight:700;font-size:14px;color:#b32d2d;margin:4px 0 2px">'+esc(title1)+'</div>'
+    + (title2 ? '<div style="text-align:center;font-weight:700;font-size:13px;color:#b32d2d;margin-bottom:10px">'+esc(title2)+'</div>' : '<div style="margin-bottom:10px"></div>');
+}
+function edLegend(){
+  return '<div style="display:flex;justify-content:space-between;margin-top:10px;font-size:12.5px"><div>*E- Earning<br>*D- Deduction</div>'
+    + '<div style="text-align:right">@ 1 Manual<br>2 Computer</div></div>';
+}
+function schoolAddrLine(){
+  var k = S.school;
+  return esc([k.addressEn||k.village, (k.taluka?("Ta-"+k.taluka):""), (k.district?("Dist-"+k.district):"")].filter(Boolean).join(", "));
+}
+function signBlock(){
+  return '<div style="border:1px solid #999;padding:10px;margin-top:14px;display:flex;justify-content:space-between;font-size:12.5px">'
+    + '<div>Sign of H.M.<br>with STAMP</div>'
+    + '<div style="text-align:right">Dist. Edu. Officer :<br>Dist. '+esc(S.school.district||"")+'</div></div>'
+    + '<div style="border:1px solid #999;border-top:0;padding:8px;font-size:12.5px">'
+    + '<b>Name &amp; Address of school</b> &nbsp; '+esc(S.school.nameEn||S.school.name||"")+'<br>'
+    + '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'+schoolAddrLine()+'</div>'
+    + '<div style="text-align:right;font-size:11.5px;margin-top:4px">Page 1 of 1</div>';
+}
 VIEWS["staff:master"] = function(){
   if (!S.staff.length) return emptyCard("કર્મચારી નોંધાયેલ હોવા જોઈએ.","કર્મચારી › નવો કર્મચારી");
   var items = [["bank","બેંક / PAN વિગત"],["t1","RECORD TYPE-1"],["t3","RECORD TYPE-3"],
@@ -1896,9 +1936,10 @@ VIEWS["staff:master"] = function(){
     : SUB.master==="t12" ? payM12View()
     : SUB.master==="app3" ? payApp3View()
     : payBankView();
-  return subBar("master", items) + body;
+  return payCodesCard() + subBar("master", items) + body;
 };
 WIRE["staff:master"] = function(){
+  payCodesWire();
   wireSubBar("master");
   if (SUB.master==="t1") payM1Wire();
   else if (SUB.master==="t3") payM3Wire();
@@ -1946,22 +1987,22 @@ function payBankWire(){
 
 /* -- RECORD TYPE-1 -- */
 function payM1Fields(){
+  /* first 12 = left column, next 10 = right column, last = full-width nominee row (matches the printed form) */
   return [
-    ["r1_dist","Dist.Code (OFF)"], ["r1_budget","Budget Head Code"], ["r1_desig","Designation Code"],
+    ["r1_dist","Dist.Code(off)"], ["r1_budget","Budget Head Code"], ["r1_desig","Designation Code"],
     ["r1_grade","Grade Code"], ["r1_school","School Code"], ["r1_typepost","Type of Post"],
     ["r1_moi","Month of Increment"], ["r1_dob","Birthdate"], ["r1_join","Joining Date"],
-    ["r1_stoppay","Stop Pay Date"], ["r1_pfcat","P.F. Category"], ["r1_cpfgpf","CPF/GPF A/c No"],
-    ["r1_box","Box Code"], ["r1_bankacc","Bank A/c No"], ["r1_dacat","D.A. Category"],
+    ["r1_stoppay","Stop Pay Date"], ["r1_pfcat","P.F. Category"], ["r1_cpfgpf","C.P.F.G.P.F. A/c No"],
+    ["r1_box","Box Code"], ["r1_bankacc","Bank A/C No."], ["r1_dacat","D.A. Category"],
     ["r1_clacat","C.L.A. Category"], ["r1_racat","R.A. Category"], ["r1_class","Class Code"],
-    ["r1_proftax","Prof.Tax Code"], ["r1_gpfsched","GPF Sched.Code"], ["r1_catcode","Category Code"],
-    ["r1_code3","Code-3"], ["r1_nominee","NameOfNominee"]
+    ["r1_proftax","Prof. Tax Code"], ["r1_gpfsched","G.P.F.Sched"], ["r1_catcode","Category Code"],
+    ["r1_code3","Code3"], ["r1_nominee","NameOfNominee"]
   ];
 }
 function payM1View(){
   var flds = payM1Fields();
   return '<div class="card"><h3>PAYROLL MASTER DATA FORM - RECORD TYPE 1</h3>'
     + '<div class="grid">'
-    + fld("r1_company","Company Code", S.school.index || S.school.udise || "")
     + sel("r1_action","Action Code (2 New/3 Change)",["2 - New","3 - Change"],"2 - New")
     + '<div><label class="f">Emp. Name</label><select id="r1_stu">'
       + S.staff.map(function(t){ return '<option value="'+t.id+'">'+esc(t.name)+'</option>'; }).join("")
@@ -2003,22 +2044,51 @@ function payM1Wire(){
     var stu = val("r1_stu");
     if (!stu) return;
     var r = existing();
-    var obj = { staffId: stu, company: val("r1_company"), r1_action: val("r1_action"), month: val("r1_month") };
+    var obj = { staffId: stu, r1_action: val("r1_action"), month: val("r1_month") };
     if (r) obj.id = r.id;
     flds.forEach(function(f){ obj[f[0]] = val(f[0]); });
     await put("payM1", obj);
     toast("Record Type-1 સચવાયો"); render();
   };
   $("r1_print").onclick = function(){
-    var rows = [["Company Code", val("r1_company")], ["Action Code", val("r1_action")],
-      ["Emp. Name", staffName(val("r1_stu"))], ["Month", val("r1_month")]]
-      .concat(flds.map(function(f){ return [f[1], val(f[0])]; }));
-    printPage("PAYROLL MASTER DATA FORM - RECORD TYPE 1",
-      '<h3 style="text-align:center">PAYROLL MASTER DATA FORM - RECORD TYPE 1</h3>'
-      + '<table style="border-collapse:collapse;width:100%">' + rows.map(function(r){
-          return '<tr><td style="padding:4px;border:1px solid #ccc;font-weight:600">'+esc(r[0])+'</td>'
-            + '<td style="padding:4px;border:1px solid #ccc">'+esc(r[1]||"—")+'</td></tr>';
-        }).join("") + '</table>');
+    var t = S.staff.find(function(x){return x.id===val("r1_stu");}) || {};
+    var st = S.settings;
+    var left = flds.slice(0,12), right = flds.slice(12,22), nominee = flds[22];
+    var rowsHtml = "";
+    for (var i=0;i<left.length;i++){
+      var rf = right[i];
+      rowsHtml += '<tr>'
+        + '<td style="border:1px solid #c9a0c9;padding:3px 6px;color:#1a3a7a">'+esc(left[i][1])+'</td>'
+        + '<td style="border:1px solid #c9a0c9;padding:3px 6px">&nbsp;</td>'
+        + '<td style="border:1px solid #c9a0c9;padding:3px 6px">'+esc(val(left[i][0])||"")+'</td>'
+        + '<td style="border:1px solid #c9a0c9;padding:3px 6px;color:#1a3a7a">'+(rf?esc(rf[1]):"")+'</td>'
+        + '<td style="border:1px solid #c9a0c9;padding:3px 6px">&nbsp;</td>'
+        + '<td style="border:1px solid #c9a0c9;padding:3px 6px">'+(rf?esc(val(rf[0])||""):"")+'</td>'
+        + '</tr>';
+    }
+    var body = officeHeading("PAYROLL MASTER DATA FORM")
+      + '<table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:10px"><tr>'
+      + '<td style="width:50%;vertical-align:top">'
+        + '<div>Record Type &nbsp;: 1</div>'
+        + '<div>Company Code &nbsp;: '+esc(st.payCompanyCode||"")+'</div>'
+        + '<div>Employee No &nbsp;: '+esc(t.empNo||"")+'</div>'
+        + '<div style="margin-top:6px">Employee Name &nbsp;: '+esc(t.name||"")+'</div>'
+      + '</td>'
+      + '<td style="width:50%;vertical-align:top">'
+        + '<div>Action Code &nbsp;: '+esc(val("r1_action"))+'</div>'
+        + '<div>District Code &nbsp;: '+esc(st.payDistrictCode||"")+'</div>'
+        + '<div>School Code &nbsp;: '+esc(st.paySchoolCode||"")+'</div>'
+        + '<div>Month &amp; Year &nbsp;: '+esc(val("r1_month"))+'</div>'
+      + '</td></tr></table>'
+      + '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>'
+      + '<th style="border:1px solid #c9a0c9;padding:3px 6px">Data Type</th><th style="border:1px solid #c9a0c9;padding:3px 6px">Description</th><th style="border:1px solid #c9a0c9;padding:3px 6px">Code/Value</th>'
+      + '<th style="border:1px solid #c9a0c9;padding:3px 6px">Data Type</th><th style="border:1px solid #c9a0c9;padding:3px 6px">Description</th><th style="border:1px solid #c9a0c9;padding:3px 6px">Code/Value</th>'
+      + '</tr></thead><tbody>' + rowsHtml + '</tbody></table>'
+      + '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:-1px"><tr>'
+      + '<td style="border:1px solid #c9a0c9;padding:3px 6px;width:16.6%">'+esc(nominee[1])+'</td>'
+      + '<td style="border:1px solid #c9a0c9;padding:3px 6px" colspan="5">'+esc(val(nominee[0])||"")+'</td></tr></table>'
+      + signBlock();
+    printPage("PAYROLL MASTER DATA FORM - RECORD TYPE 1", body);
   };
   $("r1_exit").onclick = function(){ cur.t = "list"; render(); };
   delWire("payM1");
@@ -2034,18 +2104,17 @@ function payM3View(){
   var rows = S.payM3.filter(function(r){ return r.month === mon; });
   return '<div class="card"><h3>PAYROLL MASTER DATA FORM - RECORD TYPE 3</h3>'
     + '<div class="grid">'
-    + fld("r3_company","Company Code", S.school.index || S.school.udise || "")
     + fld("r3_month","Month & Year", mon, "month")
     + '</div>'
     + '<div class="grid" style="margin-top:10px">'
-    + '<div><label class="f">Act.Cd. (હેડ કોડ)</label><select id="r3_head"><option value="">—</option>'
+    + '<div><label class="f">Code (હેડ કોડ)</label><select id="r3_head"><option value="">—</option>'
       + S.heads.map(function(h){ return '<option value="'+esc(h.code)+'">'+esc(h.code)+' — '+esc(h.name)+'</option>'; }).join("")
       + '</select></div>'
-    + '<div><label class="f">Name (કર્મચારી)</label><select id="r3_stu">'
+    + '<div><label class="f">Emp Name</label><select id="r3_stu">'
       + S.staff.map(function(t){ return '<option value="'+t.id+'">'+esc(t.name)+'</option>'; }).join("")
       + '</select></div>'
     + sel("r3_ed","E/D",["E","D"],"E")
-    + fld("r3_code","Code","")
+    + sel("r3_action","Action Code",["02 - New","03 - Change"],"03 - Change")
     + fld("r3_amt","Amount","0","number")
     + '</div>'
     + '<div style="margin-top:12px" class="row" style="align-items:center;gap:14px">'
@@ -2054,10 +2123,11 @@ function payM3View(){
     + '</div></div>'
     + '<div class="card"><h3>'+esc(mon)+' ની યાદી</h3>'
     + (rows.length
-      ? '<div class="tw"><table><thead><tr><th>Act.Cd.</th><th>Name</th><th>E/D</th><th>Code</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead><tbody>'
-        + rows.map(function(r){
-            return '<tr><td>'+esc(r.head||"—")+'</td><td>'+esc(staffName(r.staffId))+'</td><td>'+esc(r.ed)+'</td>'
-              + '<td>'+esc(r.code||"—")+'</td><td>'+esc(headLabel(r.head)||"—")+'</td>'
+      ? '<div class="tw"><table><thead><tr><th>SR No</th><th>Action Code</th><th>Emp Code</th><th>Emp Name</th><th>E/D</th><th>Code</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead><tbody>'
+        + rows.map(function(r,i){
+            return '<tr><td>'+(i+1)+'</td><td>'+esc((r.action||"").slice(0,2))+'</td><td>'+esc(staffEmpNo(r.staffId))+'</td>'
+              + '<td>'+esc(staffName(r.staffId))+'</td><td>'+esc(r.ed)+'</td>'
+              + '<td>'+esc(r.head||"—")+'</td><td>'+esc(headLabel(r.head)||"—")+'</td>'
               + '<td class="num">'+money(r.amt)+'</td>'
               + '<td><button class="btn sm sec" data-del="'+r.id+'">કાઢો</button></td></tr>';
           }).join("") + '</tbody></table></div>'
@@ -2069,29 +2139,35 @@ function payM3View(){
 function payM3Wire(){
   $("r3_month").onchange = function(){ SUB.master3month = val("r3_month"); render(); };
   $("r3_add").onclick = async function(){
-    if (!val("r3_head") || !val("r3_amt")) return toast("Act.Cd. અને Amount ભરો");
+    if (!val("r3_head") || !val("r3_amt")) return toast("Code અને Amount ભરો");
     await put("payM3", { staffId: val("r3_stu"), head: val("r3_head"), ed: val("r3_ed"),
-      code: val("r3_code"), amt: Number(val("r3_amt"))||0, month: val("r3_month") });
+      action: val("r3_action"), amt: Number(val("r3_amt"))||0, month: val("r3_month") });
     toast("ઉમેરાયું"); render();
   };
   $("r3_print").onclick = function(){
     var mon = val("r3_month");
     var rows = S.payM3.filter(function(r){ return r.month === mon; });
     if ($("r3_headwise").checked) rows = rows.slice().sort(function(a,b){ return String(a.head).localeCompare(String(b.head)); });
-    var body = '<h3 style="text-align:center">PAYROLL MASTER DATA FORM - RECORD TYPE 3</h3>'
-      + '<div style="text-align:center;margin-bottom:8px">Month: '+esc(mon)+'</div>'
-      + '<table style="border-collapse:collapse;width:100%"><thead><tr>'
-      + '<th style="border:1px solid #ccc;padding:4px">Act.Cd.</th><th style="border:1px solid #ccc;padding:4px">Name</th>'
-      + '<th style="border:1px solid #ccc;padding:4px">E/D</th><th style="border:1px solid #ccc;padding:4px">Code</th>'
-      + '<th style="border:1px solid #ccc;padding:4px">Description</th><th style="border:1px solid #ccc;padding:4px">Amount</th></tr></thead><tbody>'
-      + rows.map(function(r){
-          return '<tr><td style="border:1px solid #ccc;padding:4px">'+esc(r.head||"—")+'</td>'
-            + '<td style="border:1px solid #ccc;padding:4px">'+esc(staffName(r.staffId))+'</td>'
-            + '<td style="border:1px solid #ccc;padding:4px">'+esc(r.ed)+'</td>'
-            + '<td style="border:1px solid #ccc;padding:4px">'+esc(r.code||"—")+'</td>'
-            + '<td style="border:1px solid #ccc;padding:4px">'+esc(headLabel(r.head)||"—")+'</td>'
-            + '<td style="border:1px solid #ccc;padding:4px;text-align:right">'+money(r.amt)+'</td></tr>';
-        }).join("") + '</tbody></table>';
+    var body = officeHeading("PAYROLL MASTER DATA FORM")
+      + '<div style="font-size:12.5px;margin-bottom:8px">Record Type &nbsp;: 3<br>'
+      + 'Company Code &nbsp;: '+esc(S.settings.payCompanyCode||"")+' &nbsp;&nbsp;&nbsp; School Code &nbsp;: '+esc(S.settings.paySchoolCode||"")+'<br>'
+      + 'Month &amp; Year &nbsp;: '+esc(mon)+'</div>'
+      + '<table style="border-collapse:collapse;width:100%;font-size:12px"><thead><tr>'
+      + '<th style="border:1px solid #c9a0c9;padding:3px">SR<br>No</th><th style="border:1px solid #c9a0c9;padding:3px">Action<br>Code</th>'
+      + '<th style="border:1px solid #c9a0c9;padding:3px">Emp.<br>Code</th><th style="border:1px solid #c9a0c9;padding:3px">Emp Name</th>'
+      + '<th style="border:1px solid #c9a0c9;padding:3px">E/D</th><th style="border:1px solid #c9a0c9;padding:3px">Code</th>'
+      + '<th style="border:1px solid #c9a0c9;padding:3px">Description</th><th style="border:1px solid #c9a0c9;padding:3px">Amount</th></tr></thead><tbody>'
+      + rows.map(function(r,i){
+          return '<tr><td style="border:1px solid #c9a0c9;padding:3px;text-align:center">'+(i+1)+'</td>'
+            + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:center">'+esc((r.action||"").slice(0,2))+'</td>'
+            + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:center">'+esc(staffEmpNo(r.staffId))+'</td>'
+            + '<td style="border:1px solid #c9a0c9;padding:3px">'+esc(staffName(r.staffId))+'</td>'
+            + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:center">'+esc(r.ed)+'</td>'
+            + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:center">'+esc(r.head||"—")+'</td>'
+            + '<td style="border:1px solid #c9a0c9;padding:3px">'+esc(headLabel(r.head)||"—")+'</td>'
+            + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:right">'+money(r.amt)+'</td></tr>';
+        }).join("") + '</tbody></table>'
+      + edLegend() + signBlock();
     printPage("Record Type 3", body);
   };
   $("r3_exit").onclick = function(){ cur.t = "list"; render(); };
@@ -2105,14 +2181,13 @@ function payM10View(){
   var staff = S.staff.filter(function(t){return !t.relieveDate;});
   return '<div class="card"><h3>PAYROLL LEAVE - RECORD TYPE 10</h3>'
     + '<div class="grid">'
-    + fld("r10_company","Company Code", S.school.index || S.school.udise || "")
     + fld("r10_month","Month & Year", mon, "month")
     + '</div></div>'
-    + '<div class="card"><div class="tw"><table><thead><tr><th>Emp No.</th><th>Name</th>'
+    + '<div class="card"><div class="tw"><table><thead><tr><th>SR No</th><th>Emp Code</th><th>Name</th>'
     + '<th class="num">Leave Without Pay — FULL</th><th class="num">Leave Without Pay — HALF</th></tr></thead><tbody>'
     + staff.map(function(t,i){
         var r = rec(t.id);
-        return '<tr><td>'+(i+1)+'</td><td>'+esc(t.name)+'</td>'
+        return '<tr><td>'+(i+1)+'</td><td>'+esc(staffEmpNo(t.id)||"—")+'</td><td>'+esc(t.name)+'</td>'
           + '<td><input type="number" min="0" data-full="'+t.id+'" value="'+(r?(r.full||0):0)+'" style="width:80px"></td>'
           + '<td><input type="number" min="0" data-half="'+t.id+'" value="'+(r?(r.half||0):0)+'" style="width:80px"></td></tr>';
       }).join("") + '</tbody></table></div>'
@@ -2140,19 +2215,26 @@ function payM10Wire(){
   $("r10_print").onclick = function(){
     var mon = val("r10_month");
     var staff = S.staff.filter(function(t){return !t.relieveDate;});
-    var body = '<h3 style="text-align:center">PAYROLL LEAVE - RECORD TYPE 10</h3>'
-      + '<div style="text-align:center;margin-bottom:8px">Month: '+esc(mon)+'</div>'
-      + '<table style="border-collapse:collapse;width:100%"><thead><tr>'
-      + '<th style="border:1px solid #ccc;padding:4px">Emp No.</th><th style="border:1px solid #ccc;padding:4px">Name</th>'
-      + '<th style="border:1px solid #ccc;padding:4px">FULL</th><th style="border:1px solid #ccc;padding:4px">HALF</th></tr></thead><tbody>'
+    var body = officeHeading("PAYROLL","LEAVE")
+      + '<div style="font-size:12.5px;margin-bottom:8px">Record Type &nbsp;: 10<br>'
+      + 'Company Code &nbsp;: '+esc(S.settings.payCompanyCode||"")+' &nbsp;&nbsp;&nbsp; School Code &nbsp;: '+esc(S.settings.paySchoolCode||"")+'<br>'
+      + 'Month &amp; Year &nbsp;: '+esc(mon)+'</div>'
+      + '<table style="border-collapse:collapse;width:100%;font-size:12px"><thead><tr>'
+      + '<th rowspan="2" style="border:1px solid #c9a0c9;padding:3px">SR<br>No</th>'
+      + '<th rowspan="2" style="border:1px solid #c9a0c9;padding:3px">Emp<br>Code</th>'
+      + '<th rowspan="2" style="border:1px solid #c9a0c9;padding:3px">Employee Name</th>'
+      + '<th colspan="2" style="border:1px solid #c9a0c9;padding:3px">CURRENT MONTH<br>LEAVE WITHOUT PAY</th></tr>'
+      + '<tr><th style="border:1px solid #c9a0c9;padding:3px">FULL</th><th style="border:1px solid #c9a0c9;padding:3px">HALF</th></tr></thead><tbody>'
       + staff.map(function(t,i){
           var fEl = document.querySelector('[data-full="'+t.id+'"]'), hEl = document.querySelector('[data-half="'+t.id+'"]');
           var full = fEl ? fEl.value : 0, half = hEl ? hEl.value : 0;
-          return '<tr><td style="border:1px solid #ccc;padding:4px">'+(i+1)+'</td>'
-            + '<td style="border:1px solid #ccc;padding:4px">'+esc(t.name)+'</td>'
-            + '<td style="border:1px solid #ccc;padding:4px;text-align:right">'+esc(full)+'</td>'
-            + '<td style="border:1px solid #ccc;padding:4px;text-align:right">'+esc(half)+'</td></tr>';
-        }).join("") + '</tbody></table>';
+          return '<tr><td style="border:1px solid #c9a0c9;padding:3px;text-align:center">'+(i+1)+'</td>'
+            + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:center">'+esc(staffEmpNo(t.id)||"—")+'</td>'
+            + '<td style="border:1px solid #c9a0c9;padding:3px">'+esc(t.name)+'</td>'
+            + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:right">'+esc(full)+'</td>'
+            + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:right">'+esc(half)+'</td></tr>';
+        }).join("") + '</tbody></table>'
+      + signBlock();
     printPage("Record Type 10", body);
   };
   $("r10_exit").onclick = function(){ cur.t = "list"; render(); };
@@ -2164,7 +2246,6 @@ function payM12View(){
   var rows = S.payM12.filter(function(r){ return r.month === mon; });
   return '<div class="card"><h3>PAYROLL MASTER DATA FORM - RECORD TYPE 12 (Adjustment Data)</h3>'
     + '<div class="grid">'
-    + fld("r12_company","Company Code", S.school.index || S.school.udise || "")
     + fld("r12_month","Month & Year", mon, "month")
     + '</div>'
     + '<div class="grid" style="margin-top:10px">'
@@ -2172,21 +2253,21 @@ function payM12View(){
       + S.staff.map(function(t){ return '<option value="'+t.id+'">'+esc(t.name)+'</option>'; }).join("")
       + '</select></div>'
     + sel("r12_ed","E/D",["E","D"],"E")
-    + '<div><label class="f">Hd.Cd.</label><select id="r12_head"><option value="">—</option>'
+    + '<div><label class="f">Head Code</label><select id="r12_head"><option value="">—</option>'
       + S.heads.map(function(h){ return '<option value="'+esc(h.code)+'">'+esc(h.code)+' — '+esc(h.name)+'</option>'; }).join("")
       + '</select></div>'
-    + fld("r12_desc","Desc.","")
-    + sel("r12_manco","Man./Co.",["Man.","Co."],"Man.")
-    + fld("r12_amt","Amt","0","number")
+    + fld("r12_desc","Description (ખાલી રાખો તો હેડના નામ પરથી)","")
+    + sel("r12_manco","@Manual/Comp.",["1 - Manual","2 - Computer"],"1 - Manual")
+    + fld("r12_amt","Amount","0","number")
     + '</div>'
     + '<div style="margin-top:12px"><button class="btn sm" id="r12_add">એડ</button></div></div>'
     + '<div class="card"><h3>'+esc(mon)+' ની યાદી</h3>'
     + (rows.length
-      ? '<div class="tw"><table><thead><tr><th>Emp No.</th><th>Name</th><th>E/D</th><th>Hd.Cd.</th><th>Desc.</th><th>Man./Co.</th><th class="num">Amt</th><th></th></tr></thead><tbody>'
-        + rows.map(function(r,i){
-            return '<tr><td>'+(i+1)+'</td><td>'+esc(staffName(r.staffId))+'</td><td>'+esc(r.ed)+'</td>'
+      ? '<div class="tw"><table><thead><tr><th>Emp Code</th><th>Name</th><th>E/D</th><th>Head Code</th><th>Description</th><th>@Manual/Comp.</th><th class="num">Amount</th><th></th></tr></thead><tbody>'
+        + rows.map(function(r){
+            return '<tr><td>'+esc(staffEmpNo(r.staffId))+'</td><td>'+esc(staffName(r.staffId))+'</td><td>'+esc(r.ed)+'</td>'
               + '<td>'+esc(r.head||"—")+'</td><td>'+esc(r.desc||headLabel(r.head)||"—")+'</td>'
-              + '<td>'+esc(r.manco)+'</td><td class="num">'+money(r.amt)+'</td>'
+              + '<td>'+esc((r.manco||"").slice(0,1))+'</td><td class="num">'+money(r.amt)+'</td>'
               + '<td><button class="btn sm sec" data-del="'+r.id+'">કાઢો</button></td></tr>';
           }).join("") + '</tbody></table></div>'
       : '<div class="empty">આ મહિને કોઈ નોંધ નથી.</div>')
@@ -2205,20 +2286,27 @@ function payM12Wire(){
   $("r12_print").onclick = function(){
     var mon = val("r12_month");
     var rows = S.payM12.filter(function(r){ return r.month === mon; });
-    var body = '<h3 style="text-align:center">PAYROLL MASTER DATA FORM - RECORD TYPE 12 (Adjustment Data)</h3>'
-      + '<div style="text-align:center;margin-bottom:8px">Month: '+esc(mon)+'</div>'
-      + '<table style="border-collapse:collapse;width:100%"><thead><tr>'
-      + '<th style="border:1px solid #ccc;padding:4px">Name</th><th style="border:1px solid #ccc;padding:4px">E/D</th>'
-      + '<th style="border:1px solid #ccc;padding:4px">Hd.Cd.</th><th style="border:1px solid #ccc;padding:4px">Desc.</th>'
-      + '<th style="border:1px solid #ccc;padding:4px">Man./Co.</th><th style="border:1px solid #ccc;padding:4px">Amt</th></tr></thead><tbody>'
+    var body = officeHeading("PAYROLL TRANSACTION DATA FORM","(Adjustment Data)")
+      + '<table style="width:100%;font-size:12.5px;margin-bottom:8px"><tr>'
+      + '<td style="width:60%">Record Type &nbsp;: 12<br>Company Code &nbsp;: '+esc(S.settings.payCompanyCode||"")+'<br>'
+      + 'Month &amp; Year &nbsp;: '+esc(mon)+'</td>'
+      + '<td style="width:40%;vertical-align:top"><div style="border:1px solid #999;padding:4px;display:inline-block">School Code &nbsp;: '+esc(S.settings.paySchoolCode||"")+'</div></td>'
+      + '</tr></table>'
+      + '<table style="border-collapse:collapse;width:100%;font-size:12px"><thead><tr>'
+      + '<th style="border:1px solid #c9a0c9;padding:3px">Emp<br>Code</th><th style="border:1px solid #c9a0c9;padding:3px">Name</th>'
+      + '<th style="border:1px solid #c9a0c9;padding:3px">E/D*</th><th style="border:1px solid #c9a0c9;padding:3px">Head<br>Code</th>'
+      + '<th style="border:1px solid #c9a0c9;padding:3px">Description</th><th style="border:1px solid #c9a0c9;padding:3px">@Manual<br>/Comp.</th>'
+      + '<th style="border:1px solid #c9a0c9;padding:3px">Amount</th></tr></thead><tbody>'
       + rows.map(function(r){
-          return '<tr><td style="border:1px solid #ccc;padding:4px">'+esc(staffName(r.staffId))+'</td>'
-            + '<td style="border:1px solid #ccc;padding:4px">'+esc(r.ed)+'</td>'
-            + '<td style="border:1px solid #ccc;padding:4px">'+esc(r.head||"—")+'</td>'
-            + '<td style="border:1px solid #ccc;padding:4px">'+esc(r.desc||headLabel(r.head)||"—")+'</td>'
-            + '<td style="border:1px solid #ccc;padding:4px">'+esc(r.manco)+'</td>'
-            + '<td style="border:1px solid #ccc;padding:4px;text-align:right">'+money(r.amt)+'</td></tr>';
-        }).join("") + '</tbody></table>';
+          return '<tr><td style="border:1px solid #c9a0c9;padding:3px;text-align:center">'+esc(staffEmpNo(r.staffId))+'</td>'
+            + '<td style="border:1px solid #c9a0c9;padding:3px">'+esc(staffName(r.staffId))+'</td>'
+            + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:center">'+esc(r.ed)+'</td>'
+            + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:center">'+esc(r.head||"—")+'</td>'
+            + '<td style="border:1px solid #c9a0c9;padding:3px">'+esc(r.desc||headLabel(r.head)||"—")+'</td>'
+            + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:center">'+esc((r.manco||"").slice(0,1))+'</td>'
+            + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:right">'+money(r.amt)+'</td></tr>';
+        }).join("") + '</tbody></table>'
+      + edLegend() + signBlock();
     printPage("Record Type 12", body);
   };
   $("r12_exit").onclick = function(){ cur.t = "list"; render(); };
@@ -2227,42 +2315,94 @@ function payM12Wire(){
 
 /* -- એપેન્ડીક્ષ-3 (ગ્રુપ ઇન્સ્યોરન્સ માસ્ટર) -- */
 function payApp3View(){
-  var g = S.settings.giMaster || {policyNo:"", A:0,B:0,C:0,D:0,NIL:0};
+  var g = S.settings.giMaster || {policyNo:"", year:"", A:0,B:0,C:0,D:0,NIL:0};
   var cats = ["A","B","C","D","NIL"];
-  return '<div class="card"><h3>ગ્રુપ ઇન્સ્યોરન્સ ( એપેન્ડીક્ષ-3 ) માસ્ટર</h3>'
-    + '<div class="grid">'
+  var staff = S.staff.filter(function(t){return !t.relieveDate;});
+  return '<div class="card"><h3>ગ્રુપ ઇન્સ્યોરન્સ ( એપેન્ડીક્ષ-3 ) માસ્ટર</h3><div class="grid">'
     + fld("ap3_policy","Master Policy No.", g.policyNo||"")
+    + fld("ap3_year","Year (દા.ત. 2026-2027)", g.year||"")
     + '</div>'
-    + '<div class="tw" style="margin-top:12px"><table><thead><tr><th>Category</th><th class="num">Value</th></tr></thead><tbody>'
+    + '<div class="tw" style="margin-top:12px"><table><thead><tr><th>Category</th><th class="num">Value (₹)</th></tr></thead><tbody>'
     + cats.map(function(c){
         return '<tr><td>CATEGORY : '+c+'</td><td><input type="number" min="0" data-gicat="'+c+'" value="'+(g[c]||0)+'" style="width:110px;text-align:right"></td></tr>';
       }).join("") + '</tbody></table></div>'
-    + '<div style="margin-top:14px" class="row">'
-    + '<button class="btn" id="ap3_save">સેવ</button> '
+    + '<div style="margin-top:14px"><button class="btn sm" id="ap3_save">માસ્ટર સાચવો</button></div></div>'
+    + '<div class="card"><h3>કર્મચારી કેટેગરી સોંપણી</h3>'
+    + (staff.length
+      ? '<div class="tw"><table><thead><tr><th>કર્મચારી</th><th>Computer No.</th><th>હોદ્દો</th><th>કેટેગરી</th></tr></thead><tbody>'
+        + staff.map(function(t){
+            return '<tr><td>'+esc(t.name)+'</td><td>'+esc(t.computerNo||t.empNo||"—")+'</td><td>'+esc(t.post||"—")+'</td>'
+              + '<td><select data-gi="'+t.id+'">'+opts(["A","B","C","D","NIL"], t.giCategory||"NIL")+'</select></td></tr>';
+          }).join("") + '</tbody></table></div>'
+      : '<div class="empty">કર્મચારી નોંધાયેલ નથી.</div>')
+    + '<div style="margin-top:12px" class="row">'
+    + '<button class="btn" id="ap3_assign">સોંપણી સાચવો</button> '
     + '<button class="btn sec" id="ap3_print">છાપવું</button> '
     + '<button class="btn sec" id="ap3_exit">બહાર</button></div></div>';
 }
 function payApp3Wire(){
   $("ap3_save").onclick = async function(){
-    var g = { policyNo: val("ap3_policy") };
+    var g = { policyNo: val("ap3_policy"), year: val("ap3_year") };
     ["A","B","C","D","NIL"].forEach(function(c){
       var el = document.querySelector('[data-gicat="'+c+'"]');
       g[c] = Number(el ? el.value : 0) || 0;
     });
     S.settings.giMaster = g;
-    await saveMeta(); toast("સચવાયું"); render();
+    await saveMeta(); toast("માસ્ટર સચવાયું"); render();
+  };
+  $("ap3_assign").onclick = async function(){
+    var staff = S.staff.filter(function(t){return !t.relieveDate;});
+    for (var i=0;i<staff.length;i++){
+      var t = staff[i];
+      var sel = document.querySelector('[data-gi="'+t.id+'"]');
+      var cat = sel ? sel.value : "NIL";
+      if (cat !== (t.giCategory||"NIL")) await put("staff", Object.assign({}, t, {giCategory:cat}));
+    }
+    toast("કેટેગરી સચવાઈ"); render();
   };
   $("ap3_print").onclick = function(){
     var g = S.settings.giMaster || {};
-    var body = '<h3 style="text-align:center">ગ્રુપ ઇન્સ્યોરન્સ ( એપેન્ડીક્ષ-3 ) માસ્ટર</h3>'
-      + '<div>Master Policy No.: '+esc(g.policyNo||"—")+'</div>'
-      + '<table style="border-collapse:collapse;width:100%;margin-top:8px"><thead><tr>'
-      + '<th style="border:1px solid #ccc;padding:4px">Category</th><th style="border:1px solid #ccc;padding:4px">Value</th></tr></thead><tbody>'
-      + ["A","B","C","D","NIL"].map(function(c){
-          return '<tr><td style="border:1px solid #ccc;padding:4px">CATEGORY : '+c+'</td>'
-            + '<td style="border:1px solid #ccc;padding:4px;text-align:right">'+money(g[c])+'</td></tr>';
-        }).join("") + '</tbody></table>';
-    printPage("એપેન્ડીક્ષ-3", body);
+    var k = S.school;
+    var staff = S.staff.filter(function(t){return !t.relieveDate;});
+    var grandN = 0, grandTotal = 0;
+    var sectionsHtml = ["A","B","C","D"].map(function(c){
+      var list = staff.filter(function(t){ return (t.giCategory||"NIL")===c; });
+      if (!list.length) return "";
+      var amt = Number(g[c])||0, total = list.length*amt;
+      grandN += list.length; grandTotal += total;
+      return '<div style="margin-top:14px"><div style="background:#444;color:#fff;text-align:center;font-weight:700;padding:4px;font-size:12.5px">CATEGORY:'+c+'</div>'
+        + '<table style="width:100%;border-collapse:collapse;font-size:11.5px"><thead><tr>'
+        + '<th style="border:1px solid #999;padding:3px">Sr.No</th><th style="border:1px solid #999;padding:3px">Employee Computer No</th>'
+        + '<th style="border:1px solid #999;padding:3px">Name of employee</th><th style="border:1px solid #999;padding:3px">Date of Birth</th>'
+        + '<th style="border:1px solid #999;padding:3px">Date of Joining the Institution</th><th style="border:1px solid #999;padding:3px">Designation</th>'
+        + '<th style="border:1px solid #999;padding:3px">Basic Salary as On '+esc(today())+'</th></tr></thead><tbody>'
+        + list.map(function(t,i){
+            return '<tr><td style="border:1px solid #999;padding:3px;text-align:center">'+(i+1)+'</td>'
+              + '<td style="border:1px solid #999;padding:3px;text-align:center">'+esc(t.computerNo||t.empNo||"—")+'</td>'
+              + '<td style="border:1px solid #999;padding:3px">'+esc(t.name)+'</td>'
+              + '<td style="border:1px solid #999;padding:3px;text-align:center">'+esc(t.dob||"—")+'</td>'
+              + '<td style="border:1px solid #999;padding:3px;text-align:center">'+esc(t.joined||"—")+'</td>'
+              + '<td style="border:1px solid #999;padding:3px">'+esc(t.post||"—")+'</td>'
+              + '<td style="border:1px solid #999;padding:3px;text-align:right">'+money(t.basic)+'</td></tr>';
+          }).join("") + '</tbody></table>'
+        + '<div style="text-align:right;font-size:12px;margin-top:3px">Total No. of Employees : '+list.length+' X '+amt+' = '+total+'</div></div>';
+    }).join("");
+    var body = '<div style="text-align:center;font-weight:700;font-size:16px;color:#b32d2d">APPENDIX - III</div>'
+      + '<div style="text-align:center;font-style:italic;font-size:12px;margin-bottom:10px">(Group Insurance Scheme for the employees of non-Government Colleges, Higher Secondary &amp; Secondary Schools in Gujarat State.)</div>'
+      + '<table style="width:100%;font-size:12.5px"><tr>'
+      + '<td style="width:50%;vertical-align:top">Master Policy No.<br><div style="border:1px solid #999;padding:4px;width:70%">'+esc(g.policyNo||"")+'</div></td>'
+      + '<td style="width:50%;vertical-align:top;text-align:right">Name &amp; Address of Disbursing Authority<br><b>District Education Office<br>District : '+esc((k.district||"").toUpperCase())+'</b></td>'
+      + '</tr></table>'
+      + '<div style="margin-top:8px;font-size:12.5px">Name of the School :<br><b>'+esc(k.nameEn||k.name||"")+'</b><br>'+schoolAddrLine()+'</div>'
+      + '<div style="margin-top:6px;font-size:12.5px">Company Code : '+esc(S.settings.payCompanyCode||"")+' &nbsp;&nbsp; School Code : '+esc(S.settings.paySchoolCode||"")+' &nbsp;&nbsp; Year : '+esc(g.year||"")+'</div>'
+      + sectionsHtml
+      + '<div style="margin-top:14px;font-size:12.5px">(1) Grand Total of number of employees in all Categories : '+grandN+'<br>'
+      + '(2) Total contribution of all Categories : Rs. '+grandTotal+'</div>'
+      + '<div style="display:flex;justify-content:space-between;margin-top:24px;font-size:12.5px">'
+      + '<div>Place: '+esc(k.village||k.city||"")+'</div><div>Signature on Behalf of School</div></div>'
+      + '<div style="text-align:right;font-size:12.5px">Date: '+esc(today())+'</div>'
+      + '<div style="text-align:right;font-size:11.5px;margin-top:4px">Page 1 of 1</div>';
+    printPage("APPENDIX - III", body);
   };
   $("ap3_exit").onclick = function(){ cur.t = "list"; render(); };
 }
