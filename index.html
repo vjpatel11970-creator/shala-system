@@ -1426,8 +1426,9 @@ function printPage(title, bodyHtml){
   w.document.write('<html lang="gu"><head><meta charset="utf-8"><title>'+esc(title)+'</title>'
     + '<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Gujarati:wght@400;700&display=swap" rel="stylesheet">'
     + '<style>@page{size:A4;margin:14mm}'
-    + 'body{font-family:"Noto Sans Gujarati",sans-serif;margin:0;padding:0;width:210mm;box-sizing:border-box}'
-    + '@media screen{body{padding:16px;max-width:210mm;margin:0 auto}}'
+    + 'body{font-family:"Noto Sans Gujarati",sans-serif;margin:0;padding:0;width:210mm;min-height:269mm;'
+    + 'box-sizing:border-box;display:flex;flex-direction:column}'
+    + '@media screen{body{padding:16px;max-width:210mm;min-height:calc(269mm + 32px);margin:0 auto}}'
     + 'table{width:100%}</style></head><body>'
     + bodyHtml + '</body></html>');
   w.document.close();
@@ -1918,7 +1919,9 @@ function schoolAddrLine(){
   return esc([k.addressEn||k.village, (k.taluka?("Ta-"+k.taluka):""), (k.district?("Dist-"+k.district):"")].filter(Boolean).join(", "));
 }
 function signBlock(){
-  return '<div style="border:1px solid #999;padding:10px;margin-top:14px;display:flex;justify-content:space-between;font-size:12.5px">'
+  /* margin-top:auto on the first piece pushes this whole block (and the page-number line after it)
+     down to the bottom edge of the printed A4 page, since printPage() lays the body out as a column flexbox */
+  return '<div style="border:1px solid #999;padding:10px;margin-top:auto;display:flex;justify-content:space-between;font-size:12.5px">'
     + '<div>Sign of H.M.<br>with STAMP</div>'
     + '<div style="text-align:right">Dist. Edu. Officer :<br>Dist. '+esc(S.school.district||"")+'</div></div>'
     + '<div style="border:1px solid #999;border-top:0;padding:8px;font-size:12.5px">'
@@ -2099,6 +2102,13 @@ function headLabel(code){
   var h = S.heads.find(function(x){return x.code===code;});
   return h ? h.name : "";
 }
+/* empty ruled rows so a thin register still prints as a full A4 page, like the original paper form */
+function blankRows(n, cols){
+  var cell = '<td style="border:1px solid #c9a0c9;padding:3px;height:22px">&nbsp;</td>';
+  var out = "";
+  for (var i=0;i<n;i++) out += '<tr>' + new Array(cols+1).join(cell) + '</tr>';
+  return out;
+}
 function payM3View(){
   var mon = SUB.master3month || today().slice(0,7);
   var rows = S.payM3.filter(function(r){ return r.month === mon; });
@@ -2166,7 +2176,7 @@ function payM3Wire(){
             + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:center">'+esc(r.head||"—")+'</td>'
             + '<td style="border:1px solid #c9a0c9;padding:3px">'+esc(headLabel(r.head)||"—")+'</td>'
             + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:right">'+money(r.amt)+'</td></tr>';
-        }).join("") + '</tbody></table>'
+        }).join("") + blankRows(Math.max(0,20-rows.length),8) + '</tbody></table>'
       + edLegend() + signBlock();
     printPage("Record Type 3", body);
   };
@@ -2233,7 +2243,7 @@ function payM10Wire(){
             + '<td style="border:1px solid #c9a0c9;padding:3px">'+esc(t.name)+'</td>'
             + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:right">'+esc(full)+'</td>'
             + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:right">'+esc(half)+'</td></tr>';
-        }).join("") + '</tbody></table>'
+        }).join("") + blankRows(Math.max(0,20-staff.length),5) + '</tbody></table>'
       + signBlock();
     printPage("Record Type 10", body);
   };
@@ -2305,7 +2315,7 @@ function payM12Wire(){
             + '<td style="border:1px solid #c9a0c9;padding:3px">'+esc(r.desc||headLabel(r.head)||"—")+'</td>'
             + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:center">'+esc((r.manco||"").slice(0,1))+'</td>'
             + '<td style="border:1px solid #c9a0c9;padding:3px;text-align:right">'+money(r.amt)+'</td></tr>';
-        }).join("") + '</tbody></table>'
+        }).join("") + blankRows(Math.max(0,20-rows.length),7) + '</tbody></table>'
       + edLegend() + signBlock();
     printPage("Record Type 12", body);
   };
@@ -2398,7 +2408,7 @@ function payApp3Wire(){
       + sectionsHtml
       + '<div style="margin-top:14px;font-size:12.5px">(1) Grand Total of number of employees in all Categories : '+grandN+'<br>'
       + '(2) Total contribution of all Categories : Rs. '+grandTotal+'</div>'
-      + '<div style="display:flex;justify-content:space-between;margin-top:24px;font-size:12.5px">'
+      + '<div style="display:flex;justify-content:space-between;margin-top:auto;padding-top:24px;font-size:12.5px">'
       + '<div>Place: '+esc(k.village||k.city||"")+'</div><div>Signature on Behalf of School</div></div>'
       + '<div style="text-align:right;font-size:12.5px">Date: '+esc(today())+'</div>'
       + '<div style="text-align:right;font-size:11.5px;margin-top:4px">Page 1 of 1</div>';
