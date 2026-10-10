@@ -241,7 +241,7 @@ td.num,th.num{font-family:"Inter",sans-serif}
 "use strict";
 
 /* ---------- app data ---------- */
-var COLLS = ["students","staff","books","issues","ledger","exams","attendance","letters","lcs","payslips","holidays","rooms","heads","feeMaster","timetable","examtt","leaves","scholarships","increments","payM1","payM3","payM10","payM12"];
+var COLLS = ["students","staff","books","issues","ledger","exams","attendance","letters","lcs","payslips","holidays","rooms","heads","feeMaster","timetable","examtt","leaves","scholarships","increments","payM1","payM3","payM10","payM12","smsLog"];
 var S = {
   school:{name:"",udise:"",index:"",village:"",taluka:"",district:"",principal:"",
           medium:"ગુજરાતી",type:"માધ્યમિક",board:"ગુજરાત માધ્યમિક અને ઉચ્ચતર માધ્યમિક શિક્ષણ બોર્ડ, ગાંધીનગર",
@@ -252,7 +252,7 @@ var S = {
     pin:"1234"},
   students:[], staff:[], books:[], issues:[], ledger:[], exams:[], attendance:[], letters:[], lcs:[], payslips:[],
   holidays:[], rooms:[], heads:[], feeMaster:[], timetable:[], examtt:[], leaves:[], scholarships:[], increments:[],
-  payM1:[], payM3:[], payM10:[], payM12:[]
+  payM1:[], payM3:[], payM10:[], payM12:[], smsLog:[]
 };
 
 /* ---------- storage: Google Sheets backend (Apps Script), else localStorage ---------- */
@@ -4528,27 +4528,107 @@ WIRE["reports:avgatt"] = function(){
   $("av_print").onclick = function(){ printPage("સરાસરી હાજરી પત્રક", $("av_body").innerHTML); };
 };
 
+/* ---------- SMS / WhatsApp મેસેજ સિસ્ટમ ---------- */
+var SMS_LIST = [], SMS_IDX = 0;
+function waDigits(mobile){
+  var d = String(mobile||"").replace(/\D/g,"");
+  if (!d) return "";
+  if (d.length===10) d = "91"+d; /* ભારતનો કોડ આપોઆપ ઉમેરાય */
+  return d;
+}
+function fillTemplate(tmpl, r){
+  return String(tmpl||"")
+    .replace(/\{નામ\}/g, r.name||"")
+    .replace(/\{ધોરણ\}/g, r.std||"")
+    .replace(/\{વર્ગ\}/g, r.div||"")
+    .replace(/\{પિતાનું નામ\}/g, r.father||"")
+    .replace(/\{હોદ્દો\}/g, r.post||"");
+}
+async function logSms(r, channel, msgTmpl){
+  try{ await put("smsLog", {name:r.name, mobile:r.mobile, channel:channel, message:fillTemplate(msgTmpl,r), date:today()}); }catch(e){}
+}
 VIEWS["reports:sms"] = function(){
-  if (!S.students.length) return emptyCard("વિદ્યાર્થી નોંધાયેલ હોવા જોઈએ.","વિદ્યાર્થી › નવો પ્રવેશ");
-  return '<div class="card"><h3>એસ.એમ.એસ મોકલવા માટે તૈયાર કરો</h3><div class="grid">'
-    + '<div><label class="f">ધોરણ</label><select id="sm_std"><option value="">બધા</option>'+opts(stdList(),"")+'</select></div>'
-    + '<div><label class="f">વર્ગ</label><select id="sm_div"><option value="">બધા</option>'+opts(divList(),"")+'</select></div>'
-    + '</div><div style="margin-top:10px"><label class="f">સંદેશ</label><textarea id="sm_msg" rows="3">શાળા તરફથી સૂચના: આવતીકાલે શાળા ચાલુ રહેશે.</textarea></div>'
+  if (!S.students.length && !S.staff.length) return emptyCard("વિદ્યાર્થી અથવા કર્મચારી નોંધાયેલ હોવા જોઈએ.","વિદ્યાર્થી › નવો પ્રવેશ");
+  var recentLog = S.smsLog.slice(-15).reverse();
+  return '<div class="card"><h3>SMS / WhatsApp મેસેજ મોકલવા</h3>'
+    + '<div class="hint" style="margin-bottom:10px;line-height:1.6">'
+    + 'આ મફત, સત્તાવાર રીત છે: દરેક વ્યક્તિ માટે WhatsApp અથવા SMS એપ મેસેજ પહેલેથી ભરીને ખૂલશે — ફક્ત "Send" દબાવવાનું બાકી રહેશે. '
+    + 'એક ક્લિકે, બધાને આપમેળે (કોઈ ક્લિક વગર) મોકલવા માટે WhatsApp Business API અથવા DLT-નોંધાયેલ પેઇડ SMS ગેટવે જોઈએ — એ આ સોફ્ટવેરમાં સેટ નથી; '
+    + 'SMS લિંક ફક્ત મોબાઇલ ફોનના બ્રાઉઝરમાં જ કામ કરશે (કમ્પ્યુટર પર નહીં).</div>'
+    + '<div class="grid">'
+    + '<div><label class="f">કોને મોકલવું</label><select id="sm_kind"><option value="student">વિદ્યાર્થી (વાલી)</option><option value="staff">કર્મચારી</option></select></div>'
+    + '<div><label class="f">ધોરણ (ફક્ત વિદ્યાર્થી માટે)</label><select id="sm_std"><option value="">બધા</option>'+opts(stdList(),"")+'</select></div>'
+    + '<div><label class="f">વર્ગ (ફક્ત વિદ્યાર્થી માટે)</label><select id="sm_div"><option value="">બધા</option>'+opts(divList(),"")+'</select></div>'
+    + '<div><label class="f">શોધ (નામ)</label><input id="sm_q"></div>'
+    + '</div>'
+    + '<div style="margin-top:10px"><label class="f">સંદેશ (વાપરી શકાય: {નામ} {ધોરણ} {વર્ગ} {પિતાનું નામ} {હોદ્દો})</label>'
+    + '<textarea id="sm_msg" rows="3">{નામ} ({ધોરણ}-{વર્ગ}) શાળા તરફથી સૂચના: આવતીકાલે શાળા ચાલુ રહેશે.</textarea></div>'
     + '<div style="margin-top:14px"><button class="btn" id="sm_gen">યાદી બનાવો</button></div></div>'
-    + '<div class="card" id="sm_body"></div>';
+    + '<div class="card" id="sm_body"></div>'
+    + '<div class="card"><h3>છેલ્લા મોકલેલા મેસેજ (રેકોર્ડ)</h3>'
+    + (recentLog.length
+      ? '<div class="tw"><table><thead><tr><th>તારીખ</th><th>નામ</th><th>મોબાઇલ</th><th>માધ્યમ</th></tr></thead><tbody>'
+        + recentLog.map(function(l){
+            return '<tr><td>'+esc(l.date)+'</td><td>'+esc(l.name)+'</td><td>'+esc(l.mobile)+'</td><td>'+esc(l.channel)+'</td></tr>';
+          }).join("") + '</tbody></table></div>'
+      : '<div class="empty">હજુ કોઈ મેસેજ મોકલાયો નથી.</div>') + '</div>';
 };
 WIRE["reports:sms"] = function(){
   $("sm_gen").onclick = function(){
-    var std=val("sm_std"), div=val("sm_div"), msg=val("sm_msg");
-    var kids = S.students.filter(function(s){return (!std||String(s.std)===std) && (!div||String(s.div)===div) && s.mobile;});
-    var numbers = kids.map(function(s){return s.mobile;}).join(", ");
-    $("sm_body").innerHTML = !kids.length ? '<div class="empty">મોબાઇલ નંબર ધરાવતો કોઈ વિદ્યાર્થી મળ્યો નહીં.</div>'
-      : '<h3>સંદેશ</h3><p class="hint" style="font-size:14px;color:var(--ink)">'+esc(msg)+'</p>'
-        + '<h3 style="margin-top:14px">મોબાઇલ નંબર ('+kids.length+')</h3>'
-        + '<textarea readonly rows="4" style="width:100%">'+esc(numbers)+'</textarea>'
-        + '<p class="hint">આ નંબર કોપી કરીને તમારા SMS/WhatsApp એપમાં મોકલી શકાય છે.</p>';
+    var kind = val("sm_kind"), std=val("sm_std"), div=val("sm_div"), q=val("sm_q").toLowerCase(), msg=val("sm_msg");
+    var list;
+    if (kind==="student"){
+      list = S.students.filter(function(s){
+        return (!std||String(s.std)===std) && (!div||String(s.div)===div) && s.mobile
+          && (!q || String(s.name).toLowerCase().indexOf(q)>-1);
+      }).map(function(s){ return {id:s.id, kind:"student", name:s.name, mobile:s.mobile, std:s.std, div:s.div, father:s.father}; });
+    } else {
+      list = S.staff.filter(function(t){
+        return !t.relieveDate && t.mobile && (!q || String(t.name).toLowerCase().indexOf(q)>-1);
+      }).map(function(t){ return {id:t.id, kind:"staff", name:t.name, mobile:t.mobile, post:t.post}; });
+    }
+    SMS_LIST = list; SMS_IDX = 0;
+    drawSmsList(msg);
   };
 };
+function drawSmsList(msg){
+  var body = $("sm_body");
+  if (!SMS_LIST.length){ body.innerHTML = '<div class="empty">મોબાઇલ નંબર ધરાવતી કોઈ વ્યક્તિ મળી નહીં.</div>'; return; }
+  body.innerHTML = '<h3>યાદી ('+SMS_LIST.length+')</h3>'
+    + '<div class="row" style="margin-bottom:10px;align-items:center">'
+    + '<button class="btn sm" id="sm_next">▶ આગળની વ્યક્તિને WhatsApp મોકલો ('+SMS_IDX+'/'+SMS_LIST.length+')</button> '
+    + '<button class="btn sm sec" id="sm_export">Excel માં ઉતારો</button></div>'
+    + '<div class="tw"><table><thead><tr><th>નામ</th><th>મોબાઇલ</th><th>સંદેશ</th><th>WhatsApp</th><th>SMS</th></tr></thead><tbody>'
+    + SMS_LIST.map(function(r,i){
+        var personal = fillTemplate(msg, r);
+        var d = waDigits(r.mobile);
+        return '<tr><td>'+esc(r.name)+'</td><td>'+esc(r.mobile)+'</td>'
+          + '<td style="max-width:260px;font-size:12.5px">'+esc(personal)+'</td>'
+          + '<td>'+(d?'<a class="btn sm" target="_blank" rel="noopener" data-wa="'+i+'" href="https://wa.me/'+d+'?text='+encodeURIComponent(personal)+'">WhatsApp</a>':'—')+'</td>'
+          + '<td>'+(d?'<a class="btn sm sec" data-smsl="'+i+'" href="sms:+'+d+'?body='+encodeURIComponent(personal)+'">SMS</a>':'—')+'</td></tr>';
+      }).join("") + '</tbody></table></div>';
+
+  Array.prototype.forEach.call(document.querySelectorAll("[data-wa]"), function(a){
+    a.addEventListener("click", function(){ logSms(SMS_LIST[Number(a.dataset.wa)], "WhatsApp", msg); toast("WhatsApp ખૂલ્યું"); });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-smsl]"), function(a){
+    a.addEventListener("click", function(){ logSms(SMS_LIST[Number(a.dataset.smsl)], "SMS", msg); toast("SMS એપ ખૂલ્યો (ફક્ત મોબાઇલ પર કામ કરશે)"); });
+  });
+  $("sm_next").onclick = function(){
+    if (SMS_IDX >= SMS_LIST.length) return toast("યાદી પૂરી થઈ");
+    var r = SMS_LIST[SMS_IDX];
+    var d = waDigits(r.mobile);
+    if (d){ window.open("https://wa.me/"+d+"?text="+encodeURIComponent(fillTemplate(msg,r)), "_blank"); logSms(r,"WhatsApp",msg); }
+    SMS_IDX++;
+    drawSmsList(msg);
+  };
+  $("sm_export").onclick = function(){
+    var rows = SMS_LIST.map(function(r){ return {નામ:r.name, મોબાઇલ:r.mobile, સંદેશ:fillTemplate(msg,r)}; });
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "list");
+    XLSX.writeFile(wb, "sms-list-"+today()+".xlsx");
+  };
+}
 
 VIEWS["reports:scholarship"] = function(){
   if (!S.students.length) return emptyCard("વિદ્યાર્થી નોંધાયેલ હોવા જોઈએ.","વિદ્યાર્થી › નવો પ્રવેશ");
