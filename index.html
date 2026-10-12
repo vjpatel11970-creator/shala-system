@@ -192,9 +192,13 @@ td.num,th.num{font-family:"Inter",sans-serif}
   .top h1{font-size:17px}
   th,td{padding:7px 8px;font-size:13px}
 }
+.iframebar{display:none;background:#fff3cd;color:#664d03;padding:7px 14px;text-align:center;
+  font-size:13px;position:sticky;top:0;z-index:300}
+.iframebar a{color:#664d03;font-weight:700}
 </style>
 </head>
 <body>
+<div class="iframebar" id="iframebar">આ સોફ્ટવેર Google Sites માં બતાવવામાં આવ્યું છે — છાપવા/ડાઉનલોડ માટે <a href="#" id="iframebarLink" target="_blank" rel="noopener">અહીં ક્લિક કરી સંપૂર્ણ પાનામાં ખોલો</a></div>
 <div id="gate" style="position:fixed;inset:0;background:var(--bg);z-index:200;display:grid;place-items:center;padding:16px">
   <div style="width:100%;max-width:370px">
     <div class="card" style="text-align:center">
@@ -254,6 +258,20 @@ td.num,th.num{font-family:"Inter",sans-serif}
 
 <script>
 "use strict";
+
+/* ---------- Google Sites / iframe embedding ---------- */
+try{
+  if (window.self !== window.top){
+    document.getElementById("iframebar").style.display = "block";
+    document.getElementById("iframebarLink").href = location.href;
+  }
+}catch(e){
+  /* cross-origin iframe access blocked → definitely embedded somewhere */
+  try{
+    document.getElementById("iframebar").style.display = "block";
+    document.getElementById("iframebarLink").href = location.href;
+  }catch(e2){}
+}
 
 /* ---------- app data ---------- */
 var COLLS = ["students","staff","books","issues","ledger","exams","attendance","letters","lcs","payslips","holidays","rooms","heads","feeMaster","timetable","examtt","leaves","scholarships","increments","payM1","payM3","payM10","payM12","smsLog"];
@@ -2688,6 +2706,50 @@ function grInfoView(){
     + '<input type="file" id="sd_xlimp" accept=".xlsx,.xls" style="display:none">'
     + '</div></div>';
 }
+/* Excel Import ના કૉલમ હેડર જરૂરી કી (gr/name/std…) સાથે બરાબર ન મળે તો પણ ઓળખાય
+   તે માટે સામાન્ય ગુજરાતી/અંગ્રેજી વેરિયન્ટને આંતરિક કી સાથે જોડતું કોષ્ટક. */
+var STU_ALIASES = {
+  "gr":"gr","grno":"gr","grnumber":"gr","જીઆરનંબર":"gr","જીઆરનં":"gr","જીઆર":"gr",
+  "pen":"pen","penid":"pen","apaar":"apaar","apaarid":"apaar",
+  "admit":"admit","admitdate":"admit","admissiondate":"admit","દાખલતારીખ":"admit","પ્રવેશતારીખ":"admit",
+  "stdin":"stdIn","દાખલધોરણ":"stdIn",
+  "std":"std","class":"std","standard":"std","ધોરણ":"std","હાલનુંધોરણ":"std",
+  "div":"div","division":"div","section":"div","વર્ગ":"div",
+  "surname":"surname","અટક":"surname",
+  "name":"name","studentname":"name","નામ":"name","વિદ્યાર્થીનુંનામ":"name",
+  "father":"father","fathername":"father","પિતાનુંનામ":"father",
+  "surnameen":"surnameEn","અટકઅંગ્રેજી":"surnameEn",
+  "nameen":"nameEn","નામઅંગ્રેજી":"nameEn",
+  "fatheren":"fatherEn","પિતાનુંનામઅંગ્રેજી":"fatherEn",
+  "fatherfull":"fatherFull","પિતાનુંપુરુંનામ":"fatherFull",
+  "fatherocc":"fatherOcc","પિતાનોવ્યવસાય":"fatherOcc",
+  "mother":"mother","mothername":"mother","માતાનુંનામ":"mother",
+  "motherfull":"motherFull","માતાનુંપિયરનુંનામ":"motherFull",
+  "motherocc":"motherOcc","માતાનોવ્યવસાય":"motherOcc",
+  "religion":"religion","ધર્મ":"religion",
+  "cat":"cat","caste":"cat","જ્ઞાતિ":"cat",
+  "gender":"gender","sex":"gender","જાતિ":"gender",
+  "disable":"disable","disability":"disable","વિકલાંગ":"disable",
+  "birthplace":"birthplace","જન્મસ્થળ":"birthplace",
+  "category":"category","કેટેગરી":"category",
+  "dob":"dob","dateofbirth":"dob","જન્મતારીખ":"dob",
+  "income":"income","annualincome":"income","વાર્ષિકઆવક":"income",
+  "blood":"blood","bloodgroup":"blood","બ્લડગ્રુપ":"blood",
+  "stream":"stream","પ્રવાહ":"stream",
+  "seat":"seat","seatno":"seat","બોર્ડબેઠકનંબર":"seat",
+  "mobile":"mobile","mobileno":"mobile","phone":"mobile","contact":"mobile",
+  "વાલીનોમોબાઇલ":"mobile","મોબાઇલ":"mobile","મોબાઇલનંબર":"mobile"
+};
+function normHeader_(h){ return String(h==null?"":h).toLowerCase().replace(/[\s.\-_()]/g,""); }
+function normalizeStuRow_(r){
+  var out = {};
+  Object.keys(r).forEach(function(k){
+    var nk = STU_ALIASES[normHeader_(k)];
+    out[nk || k] = r[k];
+  });
+  return out;
+}
+
 function grInfoWire(){
   var loadedId = "";
   var fields = ["sd_gr","sd_pen","sd_apaar","sd_admit","sd_std_in","sd_std","sd_div","sd_surname","sd_name","sd_father",
@@ -2770,17 +2832,22 @@ function grInfoWire(){
       try{
         var wb = XLSX.read(new Uint8Array(fr.result), {type:"array"});
         var rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-        var n = 0;
+        var n = 0, skipped = 0;
         for (var i=0;i<rows.length;i++){
-          var r = rows[i];
-          if (!r.gr && !r.name) continue;
+          var r = normalizeStuRow_(rows[i]);
+          if (!r.gr && !r.name){ skipped++; continue; }
           var existing = S.students.find(function(x){return String(x.gr)===String(r.gr);});
           if (existing) await put("students", Object.assign({}, existing, r, {id:existing.id}));
           else { delete r.id; await put("students", r); }
           n++;
         }
-        toast(n+" વિદ્યાર્થીની વિગત આયાત થઈ"); render();
-      }catch(err){ toast("ફાઇલ વાંચી શકાઈ નહીં"); }
+        if (n === 0 && rows.length){
+          toast("કોઈ વિદ્યાર્થી આયાત ન થયો — કૉલમ હેડરમાં 'જી.આર. નંબર' અને 'નામ' (અથવા gr/name) હોવા જરૂરી. પહેલા 'Excel Export' દબાવી મળતો નમૂનો વાપરો.");
+        } else {
+          toast(n+" વિદ્યાર્થીની વિગત આયાત થઈ" + (skipped ? (", "+skipped+" હરોળ છોડી દેવાઈ (GR/નામ ખાલી હતું)") : ""));
+        }
+        render();
+      }catch(err){ toast("ફાઇલ વાંચી શકાઈ નહીં — ફાઇલ .xlsx ફોર્મેટમાં છે તેની ખાતરી કરો"); }
     };
     fr.readAsArrayBuffer(f);
     e.target.value = "";
