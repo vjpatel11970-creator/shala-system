@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Gujarati:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <style>
 :root{
   --bg:#f4f1ea; --panel:#ffffff; --panel-2:#faf8f3; --ink:#1d2321; --muted:#6b736f;
@@ -210,7 +211,21 @@ td.num,th.num{font-family:"Inter",sans-serif}
       <div style="height:14px"></div>
       <button class="btn" id="lg_go" style="width:100%">પ્રવેશ કરો</button>
       <p class="hint" id="lg_msg" style="margin-bottom:0">શરૂઆતનો એડમિન પાસવર્ડ: 1234 (સીસ્ટમ › સેટિંગમાંથી બદલી શકાશે). નવા યુઝર માટે સીસ્ટમ › યુઝર બનાવવા.</p>
+      <p class="hint" style="margin-top:10px"><a href="javascript:void(0)" id="lg_paylink">ફી ઓનલાઇન ભરો (વાલી માટે) →</a></p>
     </div>
+  </div>
+</div>
+
+<div id="payGate" style="position:fixed;inset:0;background:var(--bg);z-index:210;display:none;place-items:start center;padding:16px;overflow:auto">
+  <div style="width:100%;max-width:480px;margin-top:20px">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h3 style="margin:0" id="pgTitle">ફી ઓનલાઇન ભરો</h3>
+        <button class="iconbtn" id="pg_close" title="બંધ કરો">✕</button>
+      </div>
+      <div id="pg_form"></div>
+    </div>
+    <div class="card" id="pg_result"></div>
   </div>
 </div>
 <nav class="sidebar" id="sidebar"></nav>
@@ -250,6 +265,8 @@ var S = {
     subjects:"ગુજરાતી,અંગ્રેજી,હિન્દી,સંસ્કૃત,ગણિત,વિજ્ઞાન,સામાજિક વિજ્ઞાન,ભૌતિક વિજ્ઞાન,રસાયણ વિજ્ઞાન,જીવ વિજ્ઞાન,નામાનાં મૂળતત્ત્વો,વાણિજ્ય વ્યવસ્થા,અર્થશાસ્ત્ર,આંકડાશાસ્ત્ર,કમ્પ્યુટર,શારીરિક શિક્ષણ",
     streams:"સામાન્ય પ્રવાહ,વિજ્ઞાન પ્રવાહ (A ગ્રુપ),વિજ્ઞાન પ્રવાહ (B ગ્રુપ),વિજ્ઞાન પ્રવાહ (AB ગ્રુપ),—",
     pin:"1234"},
+  apiSettings:{waToken:"",waPhoneId:"",waTemplateName:"",waTemplateLang:"",smsMethod:"GET",smsEndpoint:"",smsHeaders:"",smsBody:"",
+    upiId:"",upiName:"",rzKeyId:"",rzKeySecret:""},
   students:[], staff:[], books:[], issues:[], ledger:[], exams:[], attendance:[], letters:[], lcs:[], payslips:[],
   holidays:[], rooms:[], heads:[], feeMaster:[], timetable:[], examtt:[], leaves:[], scholarships:[], increments:[],
   payM1:[], payM3:[], payM10:[], payM12:[], smsLog:[]
@@ -293,6 +310,7 @@ async function initStore(){
       if (res && res.ok){
         S.school = Object.assign(S.school, res.data.school || {});
         S.settings = Object.assign(S.settings, res.data.settings || {});
+        S.apiSettings = Object.assign(S.apiSettings, res.data.apiSettings || {});
         COLLS.forEach(function(c){ S[c] = res.data[c] || []; });
         lsWrite(); /* keep an offline mirror */
         note("રેકોર્ડ Google Sheet પર સાચવાય છે — બીજા ઉપકરણ પરથી પણ જોઈ શકાશે.");
@@ -307,6 +325,7 @@ async function initStore(){
   if (local){
     S.school = Object.assign(S.school, local.school || {});
     S.settings = Object.assign(S.settings, local.settings || {});
+    S.apiSettings = Object.assign(S.apiSettings, local.apiSettings || {});
     COLLS.forEach(function(c){ S[c] = local[c] || []; });
   }
 }
@@ -319,6 +338,21 @@ async function saveMeta(){
     try{ await gasPost({action:"saveMeta", school:S.school, settings:S.settings}); }
     catch(e){ toast("Google Sheet પર સાચવવામાં તકલીફ પડી (સ્થાનિક નકલ સચવાઈ છે)"); }
   }
+}
+async function saveApiSettings(){
+  lsWrite();
+  if (GAS_READY){
+    try{ await gasPost({action:"saveApi", apiSettings:S.apiSettings}); }
+    catch(e){ toast("API સેટિંગ સાચવવામાં તકલીફ પડી"); }
+  }
+}
+function sendWaApi(to, text){
+  if (!GAS_READY) return Promise.resolve({ok:false, error:"Google Sheet બેકએન્ડ ગોઠવેલ નથી (GAS_URL)"});
+  return gasPost({action:"sendWa", to:to, text:text});
+}
+function sendSmsApi(to, text){
+  if (!GAS_READY) return Promise.resolve({ok:false, error:"Google Sheet બેકએન્ડ ગોઠવેલ નથી (GAS_URL)"});
+  return gasPost({action:"sendSms", to:to, text:text});
 }
 function uid(){ return "r" + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
@@ -370,8 +404,8 @@ var MENU = [
   {k:"student", t:"વિદ્યાર્થી", tabs:[["list","યાદી / શોધ"],["add","નવો પ્રવેશ"],["gr","જી.આર. એન્ટ્રી"],["autodiv","ઓટોમેટીક વર્ગ"],["autoroll","ઓટોમેટીક રોલ નંબર"],["promote","ઉપલા ધોરણમાં ચઢાવવા"],["count","સંખ્યા પત્રક"],["att","હાજરી"],["fee","વિદ્યાર્થીની ફી એન્ટ્રી"],["feeclass","ફી એન્ટ્રી (વર્ગ મુજબ)"],["lc","લીવીંગ સર્ટી ઇસ્યુ કરવું"],["lcvarg","વર્ગ મુજબ LC કાઢવા"],["lctrue","એલ.સી. ખરી ફોર્મ"],["sschsc","એસ.એસ.સી-એચ.એસ.સી રજીસ્ટર"],["prevyear","પાછળના વર્ષના વિદ્યાર્થી"]]},
   {k:"exam", t:"પરિક્ષા", tabs:[["list","પરીક્ષાઓ"],["structure","માળખું"],["marks","ગુણની એન્ટ્રી અને ગણતરી"],["result","પરિણામ"],["register","રજીસ્ટર"],["marksheet","માર્કશીટ"]]},
   {k:"library", t:"પુસ્તકાલય", tabs:[["books","પુસ્તક યાદી"],["issue","ઇશ્યુ / પરત"]]},
-  {k:"account", t:"એકાઉન્ટ", tabs:[["sum","સરવૈયું"],["entry","નવી નોંધ"],["fee","ફી ભરપાઈ"]]},
-  {k:"reports", t:"રીપોર્ટસ", tabs:[["idcard","આઈ કાર્ડ"],["parentletter","વાલી-પિતાને લેટર"],["grreg","જી.આર.રજીસ્ટર"],["genreg","જનરલ રજીસ્ટર"],["leavereg","લીવીંગ રજીસ્ટર"],["namekami","નામ કમી રજીસ્ટર"],["stdwise","વર્ગ પ્રમાણે માહિતી"],["truecopy","માહિતી ખરાઈ ફોર્મ"],["feereg","ફી રજીસ્ટર"],["character","કેરેક્ટર સર્ટી"],["bonafide","બોનાફાઈડ સર્ટી"],["caste","જ્ઞાતિ પ્રમાણપત્ર"],["utaro","વયપત્રકનો ઉતારો"],["transfer","બદલી પ્રમાણપત્ર"],["trialcert","ટ્રાયલ સર્ટી"],["birth","જન્મ પ્રમાણપત્ર"],["bday","જન્મ તારીખની શુભેચ્છા"],["avgatt","સરાસરી હાજરી પત્રક"],["attmatrix","માસવાર હાજરી પત્રક"],["sms","એસ.એમ.એસ"],["scholarship","શિષ્યવૃત્તિ"],["newadm","નવા દાખલ રીપોર્ટ"],["leftrpt","છોડી ગયેલ રીપોર્ટ"],["datewise","માહિતી (તારીખ વાઈઝ)"]]}
+  {k:"account", t:"એકાઉન્ટ", tabs:[["sum","સરવૈયું"],["entry","નવી નોંધ"],["fee","ફી ભરપાઈ"],["paygw","ઓનલાઇન પેમેન્ટ ગેટવે"]]},
+  {k:"reports", t:"રીપોર્ટસ", tabs:[["idcard","આઈ કાર્ડ"],["parentletter","વાલી-પિતાને લેટર"],["grreg","જી.આર.રજીસ્ટર"],["genreg","જનરલ રજીસ્ટર"],["leavereg","લીવીંગ રજીસ્ટર"],["namekami","નામ કમી રજીસ્ટર"],["stdwise","વર્ગ પ્રમાણે માહિતી"],["truecopy","માહિતી ખરાઈ ફોર્મ"],["feereg","ફી રજીસ્ટર"],["character","કેરેક્ટર સર્ટી"],["bonafide","બોનાફાઈડ સર્ટી"],["caste","જ્ઞાતિ પ્રમાણપત્ર"],["utaro","વયપત્રકનો ઉતારો"],["transfer","બદલી પ્રમાણપત્ર"],["trialcert","ટ્રાયલ સર્ટી"],["birth","જન્મ પ્રમાણપત્ર"],["bday","જન્મ તારીખની શુભેચ્છા"],["avgatt","સરાસરી હાજરી પત્રક"],["attmatrix","માસવાર હાજરી પત્રક"],["sms","એસ.એમ.એસ"],["smsapi","API સેટિંગ (WhatsApp/SMS)"],["scholarship","શિષ્યવૃત્તિ"],["newadm","નવા દાખલ રીપોર્ટ"],["leftrpt","છોડી ગયેલ રીપોર્ટ"],["datewise","માહિતી (તારીખ વાઈઝ)"]]}
 ];
 var cur = {m:"shala", t:"dash"};
 
@@ -3912,14 +3946,19 @@ VIEWS["account:fee"] = function(){
     + '<p class="hint">દરેક ફી નોંધ એકાઉન્ટ › સરવૈયામાં આવક તરીકે ઉમેરાશે.</p></div>'
     + '<div class="card"><h3>તાજેતરની ફી પહોંચ (જૂની પહોંચ)</h3>'
     + (function(){
-        var f = S.ledger.filter(function(l){ return l.stuId; }).slice().reverse().slice(0,25);
+        var f = S.ledger.filter(function(l){ return l.stuId || l.src; }).slice().reverse().slice(0,25);
         return f.length
-          ? '<div class="tw"><table><thead><tr><th class="num">પહોંચ નં.</th><th>વિદ્યાર્થી</th><th>બાબત</th>'
-            + '<th class="num">રકમ</th><th>તારીખ</th><th></th></tr></thead><tbody>'
+          ? '<div class="tw"><table><thead><tr><th class="num">પહોંચ નં.</th><th>વિદ્યાર્થી/ચુકવનાર</th><th>બાબત</th>'
+            + '<th class="num">રકમ</th><th>તારીખ</th><th>સ્ત્રોત</th><th>સ્થિતિ</th><th></th></tr></thead><tbody>'
             + f.map(function(l){
-                return '<tr><td class="num">'+esc(l.rno||"—")+'</td><td>'+esc(studentName(l.stuId))+'</td>'
+                var pending = l.status === "ચકાસણી બાકી";
+                return '<tr><td class="num">'+esc(l.rno||"—")+'</td><td>'+esc(l.stuId?studentName(l.stuId):(l.payer||"—"))+'</td>'
                   + '<td>'+esc(l.head)+'</td><td class="num">'+money(l.amount)+'</td><td class="num">'+esc(l.date)+'</td>'
-                  + '<td><button class="btn sm sec" data-rc="'+l.id+'">રસીદ</button> <button class="btn sm warn" data-del="'+l.id+'">ડીલીટ</button></td></tr>';
+                  + '<td>'+esc(l.src||"ઓફિસ")+'</td>'
+                  + '<td>'+(pending?'<span class="chip r">ચકાસણી બાકી</span>':(l.src?'<span class="chip g">✓ ચકાસાયેલ</span>':'—'))+'</td>'
+                  + '<td><button class="btn sm sec" data-rc="'+l.id+'">રસીદ</button> '
+                  + (pending?'<button class="btn sm" data-verify="'+l.id+'">ચકાસ્યું</button> ':'')
+                  + '<button class="btn sm warn" data-del="'+l.id+'">ડીલીટ</button></td></tr>';
               }).join("") + '</tbody></table></div>'
           : '<div class="empty">હજુ કોઈ ફી પહોંચ નથી.</div>';
       })() + '</div>';
@@ -3951,10 +3990,54 @@ WIRE["account:fee"] = function(){
       if (l) printPage("ફી પહોંચ", feeReceiptHTML(l));
     };
   });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-verify]"), function(b){
+    b.onclick = async function(){
+      var l = S.ledger.find(function(x){return x.id===b.dataset.verify;});
+      if (!l) return;
+      l.status = "✓ ઓફિસે ચકાસ્યું";
+      await put("ledger", l);
+      toast("ચકાસાયેલ તરીકે નોંધાયું"); render();
+    };
+  });
   delWire("ledger");
 };
 VIEWS["student:fee"] = VIEWS["account:fee"];
 WIRE["student:fee"] = WIRE["account:fee"];
+
+VIEWS["account:paygw"] = function(){
+  var a = S.apiSettings||{};
+  var pageUrl = location.href.split("#")[0].split("?")[0];
+  return '<div class="card"><h3>ઓનલાઇન પેમેન્ટ ગેટવે સેટિંગ</h3>'
+    + '<div class="hint" style="margin-bottom:12px;line-height:1.6">'
+    + 'આ ગોઠવ્યા પછી વાલી/વિદ્યાર્થી લોગિન વગર (મુખ્ય પ્રવેશ સ્ક્રીન પર "ફી ઓનલાઇન ભરો" લિંકથી) જાતે ફી ભરી શકશે. '
+    + 'ખરેખર મફત કોઈ પેમેન્ટ ગેટવે નથી: <b>UPI લિંક/QR મફત</b> છે પણ કોઈ આપોઆપ ચકાસણી નથી — ઓફિસે બેંક સ્ટેટમેન્ટ સામે જાતે ખાતરી કરવી પડશે. '
+    + '<b>Razorpay/કાર્ડ-નેટબેન્કિંગ</b> ગેટવે આપોઆપ ચકાસાય છે (વિશ્વસનીય) પણ તેના માટે શાળાનું KYC ખાતું + ટ્રાન્ઝેક્શન ફી (~1.5-2%) જોઈએ.</div>'
+    + '<h4 style="margin-top:4px">UPI (મફત, જાતે ચકાસવું પડે)</h4>'
+    + '<div class="grid">'
+    + '<div><label class="f">શાળાનો UPI ID</label><input id="pg_upiid" value="'+esc(a.upiId||"")+'" placeholder="દા.ત. school@okhdfcbank"></div>'
+    + '<div><label class="f">UPI પર દેખાતું નામ</label><input id="pg_upiname" value="'+esc(a.upiName||"")+'" placeholder="શાળાનું નામ"></div>'
+    + '</div>'
+    + '<h4 style="margin-top:18px">Razorpay (નોંધાયેલ ગેટવે, આપોઆપ ચકાસાય)</h4>'
+    + '<div class="hint" style="margin-bottom:8px">razorpay.com પર શાળાનું ખાતું (KYC) ખોલી Dashboard → Settings → API Keys માંથી Key ID અને Key Secret મેળવો.</div>'
+    + '<div class="grid">'
+    + '<div><label class="f">Key ID</label><input id="pg_rzkey" value="'+esc(a.rzKeyId||"")+'"></div>'
+    + '<div><label class="f">Key Secret</label><input type="password" id="pg_rzsecret" value="'+esc(a.rzKeySecret||"")+'"></div>'
+    + '</div>'
+    + '<div style="margin-top:14px"><button class="btn" id="pg_save">સેવ કરો</button></div></div>'
+    + '<div class="card"><h3>વાલી માટેની લિંક</h3>'
+    + '<p class="hint">આ લિંક વાલીઓને SMS/WhatsApp થી મોકલો — લોગિન વગર સીધું ફી ભરવાનું પાનું ખૂલશે:</p>'
+    + '<p style="font-weight:700;word-break:break-all">'+esc(pageUrl)+'?pay=1</p></div>';
+};
+WIRE["account:paygw"] = function(){
+  $("pg_save").onclick = async function(){
+    S.apiSettings = Object.assign({}, S.apiSettings, {
+      upiId: val("pg_upiid"), upiName: val("pg_upiname"),
+      rzKeyId: val("pg_rzkey"), rzKeySecret: val("pg_rzsecret")
+    });
+    await saveApiSettings();
+    toast("પેમેન્ટ ગેટવે સેટિંગ સાચવાયું");
+  };
+};
 
 /* ========== રીપોર્ટસ ========== */
 function certBodyHTML(title, paragraphs, s){
@@ -4544,17 +4627,39 @@ function fillTemplate(tmpl, r){
     .replace(/\{પિતાનું નામ\}/g, r.father||"")
     .replace(/\{હોદ્દો\}/g, r.post||"");
 }
-async function logSms(r, channel, msgTmpl){
-  try{ await put("smsLog", {name:r.name, mobile:r.mobile, channel:channel, message:fillTemplate(msgTmpl,r), date:today()}); }catch(e){}
+async function logSms(r, channel, msgTmpl, status){
+  try{ await put("smsLog", {name:r.name, mobile:r.mobile, channel:channel, message:fillTemplate(msgTmpl,r), date:today(), status: status||"મોકલાયું"}); }catch(e){}
+}
+async function sendAllApi(channel, msg){
+  if (!SMS_LIST.length) return;
+  var stEl = $("sm_api_status");
+  var ok=0, fail=0;
+  for (var i=0;i<SMS_LIST.length;i++){
+    var r = SMS_LIST[i];
+    var text = fillTemplate(msg, r);
+    var res;
+    try{ res = (channel==="WhatsApp") ? await sendWaApi(r.mobile, text) : await sendSmsApi(r.mobile, text); }
+    catch(e){ res = {ok:false, error:String(e)}; }
+    if (res && res.ok){ ok++; await logSms(r, channel, msg, "✓ મોકલાયું"); }
+    else { fail++; await logSms(r, channel, msg, "✗ નિષ્ફળ: "+((res&&res.error)||"અજ્ઞાત ભૂલ")); }
+    if (stEl) stEl.textContent = "મોકલાઈ રહ્યું છે... "+(i+1)+"/"+SMS_LIST.length+" (સફળ: "+ok+", નિષ્ફળ: "+fail+")";
+  }
+  toast(channel+" API — સફળ: "+ok+", નિષ્ફળ: "+fail);
+  render();
 }
 VIEWS["reports:sms"] = function(){
   if (!S.students.length && !S.staff.length) return emptyCard("વિદ્યાર્થી અથવા કર્મચારી નોંધાયેલ હોવા જોઈએ.","વિદ્યાર્થી › નવો પ્રવેશ");
   var recentLog = S.smsLog.slice(-15).reverse();
+  var apiReady = !!((S.apiSettings||{}).waToken) || !!((S.apiSettings||{}).smsEndpoint);
   return '<div class="card"><h3>SMS / WhatsApp મેસેજ મોકલવા</h3>'
     + '<div class="hint" style="margin-bottom:10px;line-height:1.6">'
-    + 'આ મફત, સત્તાવાર રીત છે: દરેક વ્યક્તિ માટે WhatsApp અથવા SMS એપ મેસેજ પહેલેથી ભરીને ખૂલશે — ફક્ત "Send" દબાવવાનું બાકી રહેશે. '
-    + 'એક ક્લિકે, બધાને આપમેળે (કોઈ ક્લિક વગર) મોકલવા માટે WhatsApp Business API અથવા DLT-નોંધાયેલ પેઇડ SMS ગેટવે જોઈએ — એ આ સોફ્ટવેરમાં સેટ નથી; '
-    + 'SMS લિંક ફક્ત મોબાઇલ ફોનના બ્રાઉઝરમાં જ કામ કરશે (કમ્પ્યુટર પર નહીં).</div>'
+    + (apiReady
+        ? '"API સેટિંગ" ટેબમાં ગોઠવણ થયેલ છે — નીચે "⚡ API થી આપમેળે મોકલો" બટનથી કોઈ ક્લિક વગર બધાને મોકલી શકાશે. '
+          + 'WhatsApp પર ખર્ચ ઘણા દેશોમાં મફત મર્યાદા પછી લાગુ પડે છે; SMS ગેટવે પર દરેક મેસેજનો થોડો ખર્ચ (₹) લાગે છે.'
+        : 'હાલ "ક્લિક કરીને" રીત કામ કરશે (મફત): દરેક વ્યક્તિ માટે WhatsApp/SMS એપ મેસેજ ભરેલી ખૂલશે, ફક્ત Send દબાવવાનું બાકી. '
+          + 'કોઈ ક્લિક વગર આપમેળે મોકલવા માટે "API સેટિંગ (WhatsApp/SMS)" ટેબમાં WhatsApp Cloud API અથવા SMS ગેટવે ગોઠવો. '
+          + 'SMS લિંક ફક્ત મોબાઇલ ફોનના બ્રાઉઝરમાં જ કામ કરશે (કમ્પ્યુટર પર નહીં).')
+    + '</div>'
     + '<div class="grid">'
     + '<div><label class="f">કોને મોકલવું</label><select id="sm_kind"><option value="student">વિદ્યાર્થી (વાલી)</option><option value="staff">કર્મચારી</option></select></div>'
     + '<div><label class="f">ધોરણ (ફક્ત વિદ્યાર્થી માટે)</label><select id="sm_std"><option value="">બધા</option>'+opts(stdList(),"")+'</select></div>'
@@ -4567,9 +4672,9 @@ VIEWS["reports:sms"] = function(){
     + '<div class="card" id="sm_body"></div>'
     + '<div class="card"><h3>છેલ્લા મોકલેલા મેસેજ (રેકોર્ડ)</h3>'
     + (recentLog.length
-      ? '<div class="tw"><table><thead><tr><th>તારીખ</th><th>નામ</th><th>મોબાઇલ</th><th>માધ્યમ</th></tr></thead><tbody>'
+      ? '<div class="tw"><table><thead><tr><th>તારીખ</th><th>નામ</th><th>મોબાઇલ</th><th>માધ્યમ</th><th>સ્થિતિ</th></tr></thead><tbody>'
         + recentLog.map(function(l){
-            return '<tr><td>'+esc(l.date)+'</td><td>'+esc(l.name)+'</td><td>'+esc(l.mobile)+'</td><td>'+esc(l.channel)+'</td></tr>';
+            return '<tr><td>'+esc(l.date)+'</td><td>'+esc(l.name)+'</td><td>'+esc(l.mobile)+'</td><td>'+esc(l.channel)+'</td><td>'+esc(l.status||"મોકલાયું")+'</td></tr>';
           }).join("") + '</tbody></table></div>'
       : '<div class="empty">હજુ કોઈ મેસેજ મોકલાયો નથી.</div>') + '</div>';
 };
@@ -4594,10 +4699,14 @@ WIRE["reports:sms"] = function(){
 function drawSmsList(msg){
   var body = $("sm_body");
   if (!SMS_LIST.length){ body.innerHTML = '<div class="empty">મોબાઇલ નંબર ધરાવતી કોઈ વ્યક્તિ મળી નહીં.</div>'; return; }
+  var a = S.apiSettings||{};
   body.innerHTML = '<h3>યાદી ('+SMS_LIST.length+')</h3>'
-    + '<div class="row" style="margin-bottom:10px;align-items:center">'
-    + '<button class="btn sm" id="sm_next">▶ આગળની વ્યક્તિને WhatsApp મોકલો ('+SMS_IDX+'/'+SMS_LIST.length+')</button> '
-    + '<button class="btn sm sec" id="sm_export">Excel માં ઉતારો</button></div>'
+    + '<div class="row" style="margin-bottom:6px;align-items:center;flex-wrap:wrap;gap:6px">'
+    + '<button class="btn sm" id="sm_next">▶ આગળની વ્યક્તિને WhatsApp મોકલો ('+SMS_IDX+'/'+SMS_LIST.length+')</button>'
+    + '<button class="btn sm sec" id="sm_export">Excel માં ઉતારો</button>'
+    + (a.waToken ? '<button class="btn sm" id="sm_wa_api">⚡ બધાને WhatsApp API થી મોકલો</button>' : '')
+    + (a.smsEndpoint ? '<button class="btn sm" id="sm_sms_api">⚡ બધાને SMS API થી મોકલો</button>' : '')
+    + '</div><div class="hint" id="sm_api_status" style="margin-bottom:10px"></div>'
     + '<div class="tw"><table><thead><tr><th>નામ</th><th>મોબાઇલ</th><th>સંદેશ</th><th>WhatsApp</th><th>SMS</th></tr></thead><tbody>'
     + SMS_LIST.map(function(r,i){
         var personal = fillTemplate(msg, r);
@@ -4628,7 +4737,53 @@ function drawSmsList(msg){
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "list");
     XLSX.writeFile(wb, "sms-list-"+today()+".xlsx");
   };
+  if ($("sm_wa_api")) $("sm_wa_api").onclick = function(){ sendAllApi("WhatsApp", msg); };
+  if ($("sm_sms_api")) $("sm_sms_api").onclick = function(){ sendAllApi("SMS", msg); };
 }
+
+VIEWS["reports:smsapi"] = function(){
+  var a = S.apiSettings||{};
+  return '<div class="card"><h3>API સેટિંગ — કોઈ ક્લિક વગર આપમેળે મેસેજ મોકલવા</h3>'
+    + '<div class="hint" style="margin-bottom:12px;line-height:1.6">'
+    + 'આ ખાનું ગોઠવ્યા પછી "એસ.એમ.એસ" ટેબમાં "⚡ API થી મોકલો" બટન દેખાશે, જેનાથી કોઈ ક્લિક વગર બધાને આપોઆપ મેસેજ મોકલાશે. '
+    + 'ખરેખર મફત કોઈ ઓટોમેટીક સિસ્ટમ નથી — WhatsApp ને Meta Business ખાતું (અમુક મફત મર્યાદા પછી ચાર્જ) અને SMS ને DLT-નોંધાયેલ ગેટવે ખાતું (દરેક SMS દીઠ થોડો ખર્ચ, સામાન્ય રીતે ₹0.15-0.25) જોઈએ — બંને ખાતા તમારે જાતે બનાવવા પડશે, આ સોફ્ટવેર ફક્ત એની સાથે જોડાણ કરે છે. '
+    + 'આ માહિતી ખાનગી છે — GAS_URL ની જેમ આ પણ કોઈ સાથે શેર ન કરવું.</div>'
+    + '<h4 style="margin-top:4px">WhatsApp Cloud API (Meta)</h4>'
+    + '<div class="hint" style="margin-bottom:8px;line-height:1.6">developers.facebook.com પર Meta Business ખાતું ખોલી, "WhatsApp" પ્રોડક્ટ ઉમેરી "Permanent Access Token" અને "Phone Number ID" મેળવો. '
+    + 'ટેમ્પલેટ વગર સાદો ટેક્સ્ટ મેસેજ ફક્ત એ વ્યક્તિએ છેલ્લા ૨૪ કલાકમાં તમને WhatsApp પર મેસેજ કર્યો હોય તો જ પહોંચશે — શાળા તરફથી જાતે શરૂ કરેલ (વાલીએ પહેલા મેસેજ ન કર્યો હોય એવા) મેસેજ માટે નીચે Meta એ મંજૂર કરેલ "Template Name" આપવું ફરજિયાત છે (Meta Business Manager માં ટેમ્પલેટ બનાવી મંજૂરી લેવી પડે, ૧-૨ દિવસ લાગી શકે).</div>'
+    + '<div class="grid">'
+    + '<div><label class="f">Permanent Access Token</label><input type="password" id="api_watoken" value="'+esc(a.waToken||"")+'"></div>'
+    + '<div><label class="f">Phone Number ID</label><input id="api_waphone" value="'+esc(a.waPhoneId||"")+'"></div>'
+    + '<div><label class="f">Template Name (વૈકલ્પિક, મંજૂર થયેલ)</label><input id="api_watpl" value="'+esc(a.waTemplateName||"")+'" placeholder="દા.ત. school_notice"></div>'
+    + '<div><label class="f">Template Language Code</label><input id="api_watpllang" value="'+esc(a.waTemplateLang||"")+'" placeholder="દા.ત. en_US"></div>'
+    + '</div>'
+    + '<h4 style="margin-top:18px">SMS ગેટવે (DLT-નોંધાયેલ, દા.ત. MSG91 / Fast2SMS)</h4>'
+    + '<div class="hint" style="margin-bottom:8px;line-height:1.6">ગેટવેના ડેશબોર્ડ પર DLT ટેમ્પલેટ બનાવી મંજૂર કરાવો, ત્યાંથી મળતો તૈયાર API URL / Body અહીં પેસ્ટ કરો — મોબાઇલ નંબર માટે <code>{{mobile}}</code> અને મેસેજ માટે <code>{{message}}</code> લખો, મોકલતી વખતે એ આપોઆપ બદલાઈ જશે (આ ચોક્કસ ફોર્મેટ તમારા ગેટવેના એકાઉન્ટ/ટેમ્પલેટ પ્રમાણે બદલાય છે — ગેટવેના ડેશબોર્ડ પર "API" વિભાગમાં તમારો ખરો સેમ્પલ મળશે, એ જ કોપી કરવો).</div>'
+    + '<div class="grid">'
+    + '<div><label class="f">પદ્ધતિ</label><select id="api_smsmethod"><option value="GET"'+(a.smsMethod!=="POST"?' selected':'')+'>GET (URL માં બધું)</option><option value="POST"'+(a.smsMethod==="POST"?' selected':'')+'>POST (JSON Body)</option></select></div>'
+    + '<div><label class="f">API URL</label><input id="api_smsurl" value="'+esc(a.smsEndpoint||"")+'" placeholder="https://.../send?authkey=XXX&mobiles={{mobile}}&message={{message}}"></div>'
+    + '</div>'
+    + '<div style="margin-top:10px" id="api_smspostwrap">'
+    + '<label class="f">Headers (POST માટે, દરેક લાઈનમાં એક — દા.ત. authkey: XXXXXXXX)</label>'
+    + '<textarea id="api_smsheaders" rows="2">'+esc(a.smsHeaders||"")+'</textarea>'
+    + '<label class="f" style="margin-top:8px">Body Template (POST માટે, JSON — {{mobile}} અને {{message}} વાપરો)</label>'
+    + '<textarea id="api_smsbody" rows="3">'+esc(a.smsBody||"")+'</textarea></div>'
+    + '<div style="margin-top:14px"><button class="btn" id="api_save">સેવ કરો</button></div></div>';
+};
+WIRE["reports:smsapi"] = function(){
+  function toggle(){ $("api_smspostwrap").style.display = (val("api_smsmethod")==="POST") ? "" : "none"; }
+  $("api_smsmethod").onchange = toggle; toggle();
+  $("api_save").onclick = async function(){
+    S.apiSettings = {
+      waToken: val("api_watoken"), waPhoneId: val("api_waphone"),
+      waTemplateName: val("api_watpl"), waTemplateLang: val("api_watpllang"),
+      smsMethod: val("api_smsmethod"), smsEndpoint: val("api_smsurl"),
+      smsHeaders: val("api_smsheaders"), smsBody: val("api_smsbody")
+    };
+    await saveApiSettings();
+    toast("API સેટિંગ સાચવાયું");
+  };
+};
 
 VIEWS["reports:scholarship"] = function(){
   if (!S.students.length) return emptyCard("વિદ્યાર્થી નોંધાયેલ હોવા જોઈએ.","વિદ્યાર્થી › નવો પ્રવેશ");
@@ -4822,6 +4977,120 @@ $("lg_go").onclick = function(){
 };
 $("lg_pin").onkeydown = function(e){ if (e.key === "Enter") $("lg_go").click(); };
 
+/* ---------- જાહેર (લોગિન વગર) ફી ચુકવણી પેનલ ---------- */
+var PG_STU = null;
+var PG_HEADS = ["શાળા ફી","પરીક્ષા ફી","ગણવેશ","પુસ્તક","વાહન","દાન","અન્ય"];
+function openPayGate(){
+  $("gate").style.display = "none";
+  $("payGate").style.display = "grid";
+  renderPayForm();
+}
+function closePayGate(){
+  $("payGate").style.display = "none";
+  $("gate").style.display = "grid";
+}
+$("lg_paylink").onclick = openPayGate;
+$("pg_close").onclick = closePayGate;
+function renderPayForm(){
+  var a = S.apiSettings||{};
+  var mode = PG_STU === "general" ? "general" : "student";
+  $("pg_form").innerHTML = '<div class="row" style="gap:16px;margin:8px 0 14px">'
+    + '<label><input type="radio" name="pg_mode" value="student"'+(mode==="student"?" checked":"")+'> વિદ્યાર્થીની ફી</label>'
+    + '<label><input type="radio" name="pg_mode" value="general"'+(mode==="general"?" checked":"")+'> અન્ય ચુકવણી (દાન વગેરે)</label>'
+    + '</div>'
+    + '<div id="pg_stuwrap" style="'+(mode==="general"?"display:none":"")+'">'
+    + '<div class="row"><input id="pg_gr" placeholder="વિદ્યાર્થીનો જી.આર. નંબર" style="flex:1"><button class="btn sm" id="pg_find">શોધો</button></div>'
+    + '<div class="hint" id="pg_stuinfo" style="margin-top:6px"></div></div>'
+    + '<div style="margin-top:12px"><label class="f">ચુકવનારનું નામ</label><input id="pg_payer" placeholder="તમારું નામ"></div>'
+    + '<div style="margin-top:10px"><label class="f">મોબાઇલ નંબર</label><input id="pg_mobile"></div>'
+    + '<div style="margin-top:10px"><label class="f">બાબત</label><select id="pg_head">'+PG_HEADS.map(function(h){return '<option>'+esc(h)+'</option>';}).join("")+'</select></div>'
+    + '<div style="margin-top:10px"><label class="f">રકમ (₹)</label><input id="pg_amt" type="number"></div>'
+    + '<div class="row" style="margin-top:16px;gap:8px;flex-wrap:wrap">'
+    + (a.upiId ? '<button class="btn" id="pg_upi">UPI થી ચુકવો</button>' : '')
+    + (a.rzKeyId ? '<button class="btn" id="pg_rz">કાર્ડ / નેટબેન્કિંગ / UPI (ઓનલાઇન ગેટવે)</button>' : '')
+    + (!a.upiId && !a.rzKeyId ? '<p class="hint">શાળાએ હજુ પેમેન્ટ ગેટવે ગોઠવેલ નથી — કૃપા કરી શાળાનો સંપર્ક કરો.</p>' : '')
+    + '</div>';
+  $("pg_result").innerHTML = "";
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="pg_mode"]'), function(r){
+    r.onchange = function(){ PG_STU = (val2(r)==="general") ? "general" : null; renderPayForm(); };
+  });
+  function val2(r){ return r.checked ? r.value : null; }
+  $("pg_find").onclick = function(){
+    var gr = val("pg_gr");
+    var s = S.students.find(function(x){ return String(x.gr)===gr; });
+    if (!s){ $("pg_stuinfo").textContent = "આ જી.આર. નંબરનો વિદ્યાર્થી મળ્યો નહીં."; PG_STU=null; return; }
+    PG_STU = s;
+    $("pg_stuinfo").innerHTML = '<b>'+esc(s.name)+'</b> — ધોરણ '+esc(s.std)+'/'+esc(s.div);
+    if (!val("pg_payer")) $("pg_payer").value = s.father || s.name || "";
+  };
+  if ($("pg_upi")) $("pg_upi").onclick = payViaUpi;
+  if ($("pg_rz")) $("pg_rz").onclick = payViaRazorpay;
+}
+function pgValidate(){
+  var amt = Number(val("pg_amt"))||0;
+  if (amt <= 0){ toast("રકમ ભરો"); return null; }
+  var payer = val("pg_payer");
+  if (!payer){ toast("ચુકવનારનું નામ ભરો"); return null; }
+  if (PG_STU !== "general" && !PG_STU){ toast("વિદ્યાર્થી શોધો, અથવા 'અન્ય ચુકવણી' પસંદ કરો"); return null; }
+  return { amt:amt, payer:payer, mobile:val("pg_mobile"), head:val("pg_head"), stuId: (PG_STU && PG_STU!=="general") ? PG_STU.id : "" };
+}
+function payViaUpi(){
+  var d = pgValidate(); if (!d) return;
+  var a = S.apiSettings||{};
+  var note = d.head + " - " + d.payer;
+  var upiUrl = "upi://pay?pa="+encodeURIComponent(a.upiId)+"&pn="+encodeURIComponent(a.upiName||"School")
+    +"&am="+encodeURIComponent(d.amt)+"&cu=INR&tn="+encodeURIComponent(note);
+  var qrImg = "https://api.qrserver.com/v1/create-qr-code/?size=220x220&data="+encodeURIComponent(upiUrl);
+  $("pg_result").innerHTML = '<h3>UPI થી ચુકવો</h3>'
+    + '<p class="hint">મોબાઇલ પર: નીચેના બટનથી સીધું UPI એપ ખૂલશે. કમ્પ્યુટર પર: UPI એપથી નીચેનો QR સ્કેન કરો.</p>'
+    + '<p><a class="btn" href="'+upiUrl+'" id="pg_upigo">UPI એપ ખોલો — '+money(d.amt)+'</a></p>'
+    + '<p><img src="'+qrImg+'" alt="UPI QR" style="border:1px solid #ccc;border-radius:8px"></p>'
+    + '<p class="hint" style="color:var(--bad)">નોંધ: ચુકવણી કર્યા પછી પણ શાળાની ઓફિસ બેંક સ્ટેટમેન્ટ સામે ખાતરી કરશે ત્યારે જ પહોંચ અંતિમ ગણાશે.</p>'
+    + '<div style="margin-top:10px"><label class="f">UPI ટ્રાન્ઝેક્શન નંબર / UTR (વૈકલ્પિક)</label><input id="pg_utr"></div>'
+    + '<div style="margin-top:12px"><button class="btn" id="pg_upidone">મેં ચુકવણી કરી — નોંધ કરો</button></div>';
+  $("pg_upidone").onclick = async function(){
+    var rno = "O" + Date.now().toString(36).toUpperCase();
+    await put("ledger",{date:today(),kind:"આવક",head:d.head,amount:d.amt,stuId:d.stuId,rno:rno,
+      detail:d.head+" — "+d.payer+(d.stuId?(" ("+studentName(d.stuId)+")"):""),
+      src:"ઓનલાઇન-UPI", status:"ચકાસણી બાકી", payer:d.payer, mobile:d.mobile, payRef:val("pg_utr")});
+    $("pg_result").innerHTML = '<div class="empty" style="color:var(--good)">નોંધ થઈ ગઈ (પહોંચ નં. '+rno+'). શાળાની ઓફિસ ટૂંક સમયમાં ખાતરી કરશે.</div>';
+  };
+}
+async function payViaRazorpay(){
+  var d = pgValidate(); if (!d) return;
+  var a = S.apiSettings||{};
+  if (typeof Razorpay === "undefined"){ toast("ગેટવે લોડ થયું નથી, ફરી પ્રયત્ન કરો"); return; }
+  $("pg_result").innerHTML = '<p class="hint">ઓર્ડર બની રહ્યો છે…</p>';
+  var order;
+  try{ order = await gasPost({action:"createOrder", amount:d.amt}); }
+  catch(e){ $("pg_result").innerHTML = '<p class="hint" style="color:var(--bad)">જોડાણમાં તકલીફ પડી.</p>'; return; }
+  if (!order || !order.ok){ $("pg_result").innerHTML = '<p class="hint" style="color:var(--bad)">ઓર્ડર બનાવવામાં તકલીફ: '+esc((order&&order.error)||"અજ્ઞાત ભૂલ")+'</p>'; return; }
+  $("pg_result").innerHTML = "";
+  var rzp = new Razorpay({
+    key: order.keyId, amount: order.amount, currency:"INR", order_id: order.orderId,
+    name: (S.school && S.school.name) || "શાળા", description: d.head,
+    prefill: { name:d.payer, contact:d.mobile },
+    handler: async function(resp){
+      $("pg_result").innerHTML = '<p class="hint">ચુકવણી ચકાસાઈ રહી છે…</p>';
+      var v;
+      try{
+        v = await gasPost({action:"verifyPayment", orderId:resp.razorpay_order_id,
+          paymentId:resp.razorpay_payment_id, signature:resp.razorpay_signature});
+      }catch(e){ v = {ok:false, error:String(e)}; }
+      if (v && v.ok){
+        var rno = "R" + Date.now().toString(36).toUpperCase();
+        await put("ledger",{date:today(),kind:"આવક",head:d.head,amount:d.amt,stuId:d.stuId,rno:rno,
+          detail:d.head+" — "+d.payer+(d.stuId?(" ("+studentName(d.stuId)+")"):""),
+          src:"ઓનલાઇન-Razorpay", status:"✓ ચકાસાયેલ", payer:d.payer, mobile:d.mobile, payRef:resp.razorpay_payment_id});
+        $("pg_result").innerHTML = '<div class="empty" style="color:var(--good)">ચુકવણી સફળ અને ચકાસાયેલ (પહોંચ નં. '+rno+').</div>';
+      } else {
+        $("pg_result").innerHTML = '<p class="hint" style="color:var(--bad)">ચકાસણી નિષ્ફળ: '+esc((v&&v.error)||"અજ્ઞાત ભૂલ")+' — શાળાનો સંપર્ક કરો.</p>';
+      }
+    },
+    modal:{ ondismiss:function(){ toast("ચુકવણી રદ થઈ"); } }
+  });
+  rzp.open();
+}
 drawMenu(); render();
 initStore().then(function(){
   $("gateTitle").textContent = S.school.name || "શાળા વ્યવસ્થાપન સિસ્ટમ";
@@ -4829,6 +5098,7 @@ initStore().then(function(){
   var saved = null;
   try{ saved = sessionStorage.getItem("shala_login"); }catch(e){}
   if (saved) enter(saved); else { drawMenu(); render(); }
+  try{ if (/[?&]pay=1/.test(location.search)) openPayGate(); }catch(e){}
 });
 </script>
 </body>
