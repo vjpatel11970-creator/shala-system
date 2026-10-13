@@ -193,8 +193,9 @@ td.num,th.num{font-family:"Inter",sans-serif}
   th,td{padding:7px 8px;font-size:13px}
 }
 .iframebar{display:none;background:#fff3cd;color:#664d03;padding:7px 14px;text-align:center;
-  font-size:13px;position:sticky;top:0;z-index:300}
+  font-size:13px;position:sticky;top:0;z-index:90;margin-left:240px}
 .iframebar a{color:#664d03;font-weight:700}
+@media (max-width:860px){ .iframebar{margin-left:0} }
 </style>
 </head>
 <body>
@@ -295,7 +296,7 @@ var S = {
    OR set it once per browser via: localStorage.setItem("shala_gas_url","https://script.google.com/macros/s/XXXX/exec") */
 var GAS_URL = (function(){
   try{ var o = localStorage.getItem("shala_gas_url"); if (o) return o; }catch(e){}
-  return "https://script.google.com/macros/s/AKfycbws2wBprkVDHiPJFM7j7jztFi6ZtVaBI3-3bjb17-4M3ZfdlI8Q-1stOEpVcluLWX-brg/exec";
+  return "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
 })();
 var GAS_READY = /^https:\/\/script\.google(usercontent)?\.com\//.test(GAS_URL);
 var LS_KEY = "shala_v1";
