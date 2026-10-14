@@ -443,9 +443,13 @@ function drawMenu(){
   Array.prototype.forEach.call($("sidebar").querySelectorAll(".navhead"), function(b){
     b.onclick = function(){
       var mkey = b.dataset.m;
-      if (cur.m !== mkey){
+      var homeTab = MENU.find(function(x){return x.k===mkey;}).tabs[0][0];
+      /* જૂથનું નામ (દા.ત. "શાળા") ફરી ક્લિક કરવું એટલે તે જૂથના પહેલા/મુખ્ય ટેબ (દા.ત.
+         ડેશબોર્ડ) પર પાછા જવું — ભલે આપણે તે જ જૂથના બીજા કોઈ ટેબ પર કેમ ન હોઈએ.
+         ફક્ત જ્યારે પહેલેથી જ એ મુખ્ય ટેબ પર હોઈએ ત્યારે જ સબ-મેનુ ખોલ/બંધ થાય. */
+      if (cur.m !== mkey || cur.t !== homeTab){
         cur.m = mkey;
-        cur.t = MENU.find(function(x){return x.k===mkey;}).tabs[0][0];
+        cur.t = homeTab;
         drawMenu(); render();
       } else {
         var sub = $("sidebar").querySelector('.navsub[data-grp="'+mkey+'"]');
@@ -478,7 +482,15 @@ function render(){
   head();
   var html = (VIEWS[cur.m + ":" + cur.t] ? VIEWS[cur.m + ":" + cur.t]() : "");
   $("view").innerHTML = html;
-  var w = WIRE[cur.m + ":" + cur.t]; if (w) w();
+  var w = WIRE[cur.m + ":" + cur.t];
+  if (w){
+    /* ઘણી WIRE ફંક્શન ખાલી યાદી (દા.ત. કોઈ વિદ્યાર્થી/કર્મચારી નોંધાયેલ ન હોય) ત્યારે
+       emptyCard() બતાવતી VIEWS સાથે મેળ ન ખાતા id શોધવા જાય તો ભૂલ (exception) આવે છે.
+       એ ભૂલ અહીં જ રોકવાથી આખું મેનુ/નેવિગેશન તૂટતું અટકે છે — ફક્ત તે ખાસ સ્ક્રીન પર
+       થોડું ફંક્શન કામ ન કરે, બાકીની આખી સિસ્ટમ સલામત રહે. */
+    try{ w(); }
+    catch(err){ console.error("WIRE[\"" + cur.m + ":" + cur.t + "\"] ભૂલ:", err); }
+  }
 }
 var VIEWS = {}, WIRE = {};
 
@@ -1278,6 +1290,23 @@ function rowsToObj(rows){
   rows.forEach(function(r){ if (r.field!=null) o[r.field] = r.value; });
   return o;
 }
+/* Excel માં તારીખ-ફોર્મેટવાળા સેલ XLSX.read ને cellDates:true વગર આંકડા (serial number)
+   તરીકે આવે છે — તેથી "તારીખ ની જગ્યાએ આંકડા દેખાય છે" જેવી ભૂલ ટાળવા, cellDates:true
+   સાથે વાંચેલ JS Date ઓબ્જેક્ટને અહીં "YYYY-MM-DD" શબ્દમાળામાં ફેરવવામાં આવે છે. */
+function xlsxDateToStr_(d){
+  var y=d.getFullYear(), m=("0"+(d.getMonth()+1)).slice(-2), day=("0"+d.getDate()).slice(-2);
+  return y+"-"+m+"-"+day;
+}
+function fixXlsxDates_(rows){
+  return rows.map(function(r){
+    var o = {};
+    Object.keys(r).forEach(function(k){
+      var v = r[k];
+      o[k] = (v instanceof Date && !isNaN(v)) ? xlsxDateToStr_(v) : v;
+    });
+    return o;
+  });
+}
 WIRE["system:backup"] = function(){
   $("bk_exp").onclick = function(){
     if (typeof XLSX === "undefined") return toast("Excel લાયબ્રેરી લોડ થઈ નથી, ફરી પ્રયત્ન કરો");
@@ -1297,17 +1326,17 @@ WIRE["system:backup"] = function(){
     var fr = new FileReader();
     fr.onload = async function(){
       try{
-        var wb = XLSX.read(new Uint8Array(fr.result), {type:"array"});
+        var wb = XLSX.read(new Uint8Array(fr.result), {type:"array", cellDates:true});
         if (wb.SheetNames.indexOf("school") > -1){
-          S.school = Object.assign(S.school, rowsToObj(XLSX.utils.sheet_to_json(wb.Sheets["school"])));
+          S.school = Object.assign(S.school, rowsToObj(fixXlsxDates_(XLSX.utils.sheet_to_json(wb.Sheets["school"]))));
         }
         if (wb.SheetNames.indexOf("settings") > -1){
-          S.settings = Object.assign(S.settings, rowsToObj(XLSX.utils.sheet_to_json(wb.Sheets["settings"])));
+          S.settings = Object.assign(S.settings, rowsToObj(fixXlsxDates_(XLSX.utils.sheet_to_json(wb.Sheets["settings"]))));
         }
         for (var i=0;i<COLLS.length;i++){
           var c = COLLS[i];
           if (wb.SheetNames.indexOf(c) === -1) continue;
-          var rows = XLSX.utils.sheet_to_json(wb.Sheets[c]);
+          var rows = fixXlsxDates_(XLSX.utils.sheet_to_json(wb.Sheets[c]));
           for (var j=0;j<rows.length;j++){ await put(c, rows[j]); }
         }
         await saveMeta(); toast("ડેટા ચઢાવાયો"); render();
@@ -2643,6 +2672,7 @@ WIRE["student:list"] = function(){
       : '<div class="empty">શોધ પ્રમાણે કોઈ વિદ્યાર્થી મળ્યો નહીં.</div>';
     delWire("students", draw);
   }
+  if (!$("q")) return; /* કોઈ વિદ્યાર્થી નોંધાયેલ નથી — emptyCard() બતાવ્યું છે, શોધ-પટ્ટી નથી */
   $("q").oninput = draw; $("fstd").onchange = draw; $("fdiv").onchange = draw; $("fgender").onchange = draw; draw();
 };
 
@@ -2667,7 +2697,12 @@ function grInfoView(){
       + '<div style="margin-top:10px"><button class="btn sec" id="sd_search_btn">શોધો</button></div></div>'
     : "")
     + '<div class="card"><h3 id="sd_title">જી.આર.ની વિગત — વિદ્યાર્થીની માહિતી</h3><div class="grid">'
-    + fld("sd_gr","જી.આર. નંબર",nextGr)
+    + '<div><label class="f" for="sd_gr">જી.આર. નંબર (હાલનો જી.આર. પસંદ કરો તો તે વિદ્યાર્થીની માહિતી આપમેળે ભરાશે)</label>'
+    + '<input id="sd_gr" type="text" value="'+esc(nextGr)+'" list="sd_gr_list" autocomplete="off">'
+    + '<datalist id="sd_gr_list">'
+    + S.students.slice().sort(function(a,b){return (Number(a.gr)||0)-(Number(b.gr)||0);})
+        .map(function(s){ return '<option value="'+esc(s.gr)+'">'+esc(s.name)+'</option>'; }).join("")
+    + '</datalist></div>'
     + fld("sd_pen","PEN Id","")
     + fld("sd_apaar","APAAR Id","")
     + fld("sd_admit","દાખલ તારીખ",today(),"date")
@@ -2690,7 +2725,7 @@ function grInfoView(){
     + sel("sd_gender","જાતિ",["કુમાર","કન્યા"],"કુમાર")
     + sel("sd_disable","વિકલાંગ",["No","Yes"],"No")
     + fld("sd_birthplace","જન્મ સ્થળ","")
-    + sel("sd_category","કેટેગરી",["GENERAL","SEBC","SC","ST","EWS"],"GENERAL")
+    + sel("sd_category","કેટેગરી",["GENERAL","OBC","SC","ST","EWS"],"GENERAL")
     + fld("sd_dob","જન્મ તારીખ","","date")
     + fld("sd_income","વાર્ષિક આવક","","number")
     + fld("sd_blood","બ્લડગ્રુપ","")
@@ -2767,11 +2802,23 @@ function grInfoWire(){
     $("sd_title").textContent = "જી.આર.ની વિગત — સુધારો ("+s.gr+" — "+s.name+")";
   }
   if ($("sd_search_stu")){
-    $("sd_search_btn").onclick = function(){
+    function searchSelect(){
       var id = val("sd_search_stu");
       if (!id){ loadedId=""; render(); return; }
       var s = S.students.find(function(x){return x.id===id;});
       if (s){ loadedId = id; loadStudent(s); }
+    }
+    $("sd_search_btn").onclick = searchSelect;
+    $("sd_search_stu").onchange = searchSelect; /* પસંદ કરતાં જ (બટન દબાવ્યા વગર) વિગત દેખાય */
+  }
+  /* જી.આર. નંબરના ખાનામાં હાલનો (વપરાયેલ) જી.આર. ટાઈપ/પસંદ કરવાથી — datalist ("sd_gr_list")
+     મારફતે — તે વિદ્યાર્થીની બધી માહિતી આપમેળે ભરાઈ જાય, જેથી સુધારી શકાય. */
+  if ($("sd_gr")){
+    $("sd_gr").onchange = function(){
+      var gr = val("sd_gr");
+      var s = S.students.find(function(x){ return String(x.gr)===gr && x.id!==loadedId; });
+      if (s){ loadedId = s.id; loadStudent(s); }
+      else if (!gr){ loadedId = ""; }
     };
   }
   $("sd_save").onclick = async function(){
@@ -2831,8 +2878,8 @@ function grInfoWire(){
     var fr = new FileReader();
     fr.onload = async function(){
       try{
-        var wb = XLSX.read(new Uint8Array(fr.result), {type:"array"});
-        var rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+        var wb = XLSX.read(new Uint8Array(fr.result), {type:"array", cellDates:true});
+        var rows = fixXlsxDates_(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]));
         var n = 0, skipped = 0;
         for (var i=0;i<rows.length;i++){
           var r = normalizeStuRow_(rows[i]);
