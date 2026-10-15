@@ -192,6 +192,15 @@ td.num,th.num{font-family:"Inter",sans-serif}
   .top h1{font-size:17px}
   th,td{padding:7px 8px;font-size:13px}
 }
+/* ઓનલાઇન પરિણામ — "PDF ડાઉનલોડ / છાપો" વખતે ફક્ત ગુણપત્રક જ છપાય (પોપ-અપ વગર, આ જ પાનાથી) */
+@media print{
+  @page{size:A4;margin:14mm}
+  body.pr-res{background:#fff !important}
+  body.pr-res > *:not(#resGate){display:none !important}
+  body.pr-res #resGate{position:static !important;display:block !important;background:#fff !important;padding:0 !important;overflow:visible !important}
+  body.pr-res #resGate .noprint{display:none !important}
+  body.pr-res #resGate > div{max-width:none !important;margin-top:0 !important}
+}
 .iframebar{display:none;background:#fff3cd;color:#664d03;padding:7px 14px;text-align:center;
   font-size:13px;position:sticky;top:0;z-index:90;margin-left:240px}
 .iframebar a{color:#664d03;font-weight:700}
@@ -217,6 +226,7 @@ td.num,th.num{font-family:"Inter",sans-serif}
       <button class="btn" id="lg_go" style="width:100%">પ્રવેશ કરો</button>
       <p class="hint" id="lg_msg" style="margin-bottom:0">શરૂઆતનો એડમિન પાસવર્ડ: 1234 (સીસ્ટમ › સેટિંગમાંથી બદલી શકાશે). નવા યુઝર માટે સીસ્ટમ › યુઝર બનાવવા.</p>
       <p class="hint" style="margin-top:10px"><a href="javascript:void(0)" id="lg_paylink">ફી ઓનલાઇન ભરો (વાલી માટે) →</a></p>
+      <p class="hint" style="margin-top:6px"><a href="javascript:void(0)" id="lg_reslink">પરિણામ જુઓ (વિદ્યાર્થી માટે) →</a></p>
     </div>
   </div>
 </div>
@@ -231,6 +241,24 @@ td.num,th.num{font-family:"Inter",sans-serif}
       <div id="pg_form"></div>
     </div>
     <div class="card" id="pg_result"></div>
+  </div>
+</div>
+<div id="resGate" style="position:fixed;inset:0;background:var(--bg);z-index:220;display:none;place-items:start center;padding:16px;overflow:auto">
+  <div style="width:100%;max-width:720px;margin-top:12px">
+    <div class="card noprint" id="rs_formcard">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h3 style="margin:0" id="rsTitle">પરિણામ જુઓ</h3>
+        <button class="iconbtn" id="rs_close" title="બંધ કરો">✕</button>
+      </div>
+      <p class="hint" style="margin:6px 0 12px">તમારો જી.આર. નંબર અને જન્મ તારીખ દાખલ કરો.</p>
+      <div class="grid">
+        <div><label class="f" for="rs_gr">જી.આર. નંબર</label><input id="rs_gr" type="text" autocomplete="off" inputmode="numeric"></div>
+        <div><label class="f" for="rs_dob">જન્મ તારીખ</label><input id="rs_dob" type="date"></div>
+      </div>
+      <div style="margin-top:12px"><button class="btn" id="rs_go">પરિણામ જુઓ</button></div>
+      <p class="hint" id="rs_msg" style="margin-bottom:0"></p>
+    </div>
+    <div id="rs_out"></div>
   </div>
 </div>
 <nav class="sidebar" id="sidebar"></nav>
@@ -421,7 +449,7 @@ var MENU = [
   {k:"system", t:"સીસ્ટમ", tabs:[["set","સેટિંગ"],["years","વર્ષની પસંદગી"],["users","યુઝર બનાવવા"],["report","ડેટાબેઝ અહેવાલ"],["backup","બેકઅપ"]]},
   {k:"staff", t:"કર્મચારી", tabs:[["list","કર્મચારીની વિગત"],["add","નવો કર્મચારી"],["leaveopen","ઉઘડતી રજાઓ"],["gpfopen","શરૂઆતના જી.પી.એફ."],["leaveupdate","વાર્ષિક રજાઓ સુધારવી"],["relieve","નોકરી છોડવાની વિગત"],["salary","પગાર માળખું"],["pay","પગાર ચુકવણી"],["gpf","જી.પી.એફ."],["slip","સ્લિપ યાદી"],["f16","ફોર્મ 16"],["f24","ફોર્મ 24"],["master","પે રોલ માસ્ટર ડેટા"],["sheet","સ્ટાફ માહિતી પત્રક"],["payreg","પે-રોલ રજીસ્ટર"],["increment","ઇજાફાની માહિતી"]]},
   {k:"student", t:"વિદ્યાર્થી", tabs:[["list","યાદી / શોધ"],["add","નવો પ્રવેશ"],["gr","જી.આર. એન્ટ્રી"],["autodiv","ઓટોમેટીક વર્ગ"],["autoroll","ઓટોમેટીક રોલ નંબર"],["promote","ઉપલા ધોરણમાં ચઢાવવા"],["count","સંખ્યા પત્રક"],["att","હાજરી"],["fee","વિદ્યાર્થીની ફી એન્ટ્રી"],["feeclass","ફી એન્ટ્રી (વર્ગ મુજબ)"],["lc","લીવીંગ સર્ટી ઇસ્યુ કરવું"],["lcvarg","વર્ગ મુજબ LC કાઢવા"],["lctrue","એલ.સી. ખરી ફોર્મ"],["sschsc","એસ.એસ.સી-એચ.એસ.સી રજીસ્ટર"],["prevyear","પાછળના વર્ષના વિદ્યાર્થી"]]},
-  {k:"exam", t:"પરિક્ષા", tabs:[["list","પરીક્ષાઓ"],["structure","માળખું"],["marks","ગુણની એન્ટ્રી અને ગણતરી"],["result","પરિણામ"],["register","રજીસ્ટર"],["marksheet","માર્કશીટ"]]},
+  {k:"exam", t:"પરિક્ષા", tabs:[["list","પરીક્ષાઓ"],["structure","માળખું"],["marks","ગુણની એન્ટ્રી અને ગણતરી"],["result","પરિણામ"],["register","રજીસ્ટર"],["marksheet","માર્કશીટ"],["online","ઓનલાઇન પરિણામ"]]},
   {k:"library", t:"પુસ્તકાલય", tabs:[["books","પુસ્તક યાદી"],["issue","ઇશ્યુ / પરત"]]},
   {k:"account", t:"એકાઉન્ટ", tabs:[["sum","સરવૈયું"],["entry","નવી નોંધ"],["fee","ફી ભરપાઈ"],["paygw","ઓનલાઇન પેમેન્ટ ગેટવે"]]},
   {k:"reports", t:"રીપોર્ટસ", tabs:[["idcard","આઈ કાર્ડ"],["parentletter","વાલી-પિતાને લેટર"],["grreg","જી.આર.રજીસ્ટર"],["genreg","જનરલ રજીસ્ટર"],["leavereg","લીવીંગ રજીસ્ટર"],["namekami","નામ કમી રજીસ્ટર"],["stdwise","વર્ગ પ્રમાણે માહિતી"],["truecopy","માહિતી ખરાઈ ફોર્મ"],["feereg","ફી રજીસ્ટર"],["character","કેરેક્ટર સર્ટી"],["bonafide","બોનાફાઈડ સર્ટી"],["caste","જ્ઞાતિ પ્રમાણપત્ર"],["utaro","વયપત્રકનો ઉતારો"],["transfer","બદલી પ્રમાણપત્ર"],["trialcert","ટ્રાયલ સર્ટી"],["birth","જન્મ પ્રમાણપત્ર"],["bday","જન્મ તારીખની શુભેચ્છા"],["avgatt","સરાસરી હાજરી પત્રક"],["attmatrix","માસવાર હાજરી પત્રક"],["sms","એસ.એમ.એસ"],["smsapi","API સેટિંગ (WhatsApp/SMS)"],["scholarship","શિષ્યવૃત્તિ"],["newadm","નવા દાખલ રીપોર્ટ"],["leftrpt","છોડી ગયેલ રીપોર્ટ"],["datewise","માહિતી (તારીખ વાઈઝ)"]]}
@@ -3932,6 +3960,164 @@ WIRE["exam:marksheet"] = function(){
   fillStudents(); preview();
 };
 
+/* ========== ઓનલાઇન પરિણામ (વિદ્યાર્થી પોતે જુએ/ડાઉનલોડ કરે) ========== */
+/* જન્મ તારીખ → "YYYY-MM-DD" (જૂના ડેટામાં dd/mm/yyyy પણ હોઈ શકે); ઓળખાય નહીં તો "" */
+function normDobClient_(s){
+  s = String(s == null ? "" : s).trim();
+  var m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return m[1]+"-"+("0"+m[2]).slice(-2)+"-"+("0"+m[3]).slice(-2);
+  m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (m) return m[3]+"-"+("0"+m[2]).slice(-2)+"-"+("0"+m[1]).slice(-2);
+  return "";
+}
+/* પરીક્ષા માટે દરેક વિદ્યાર્થીનું તૈયાર ગુણપત્રક (snapshot) બનાવે. ગણતરી પરિણામ પત્રક રજીસ્ટર
+   (regMainHTML) જેવી જ છે, એટલે ઓફિસમાં દેખાતા અને ઓનલાઇન દેખાતા આંકડા એકસરખા રહે. */
+function buildResultSnapshots_(ex, withRank){
+  var subs = subList().filter(function(s){ return ex.marks && ex.marks[s]; });
+  var kids = S.students.filter(function(s){ return String(s.std) === String(ex.std); });
+  var k = S.school || {};
+  var addr = [k.village, k.taluka ? "તા. "+k.taluka : "", k.district ? "જિ. "+k.district : ""].filter(Boolean).join(", ");
+  var recs = [], noMarks = [], noDob = [];
+  var stamp = new Date().toISOString();
+  kids.forEach(function(s){
+    var any = subs.some(function(sub){ return ex.marks[sub][s.id] != null; });
+    if (!any){ noMarks.push(s); return; }
+    var dob = normDobClient_(s.dob);
+    if (!dob){ noDob.push(s); return; }
+    var got = 0, max = 0, allPass = true;
+    var rows = subs.map(function(sub){
+      var v = ex.marks[sub][s.id], smax = subjectMax(ex, sub), spass = subjectPass(ex, sub);
+      if (v == null){ allPass = false; return {name:sub, max:smax, pass:spass, got:null, grade:"—"}; }
+      got += Number(v); max += smax;
+      if (Number(v) < spass) allPass = false;
+      return {name:sub, max:smax, pass:spass, got:Number(v), grade: smax ? grade(Number(v)/smax*100) : "—"};
+    });
+    var pct = max ? got/max*100 : 0;
+    recs.push({
+      id: ex.id + "_" + s.gr, examId: ex.id, examName: ex.name, examDate: ex.date || "",
+      gr: String(s.gr), dob: dob, name: s.name, father: s.father || "", std: s.std, div: s.div || "",
+      subjects: rows, got: got, max: max, pct: Math.round(pct*100)/100, grade: grade(pct),
+      result: (allPass && pct >= 33) ? "ઉત્તીર્ણ" : "અનુત્તીર્ણ",
+      school: {name:k.name||"", board:k.board||"", addr:addr, principal:k.principal||""},
+      publishedAt: stamp
+    });
+  });
+  if (withRank){
+    recs.forEach(function(r){
+      r.rank = 1 + recs.filter(function(o){ return o.pct > r.pct; }).length;
+      r.outOf = recs.length;
+    });
+  }
+  return {records: recs, noMarks: noMarks, noDob: noDob};
+}
+/* ગુણપત્રક — એડમિન પૂર્વાવલોકન અને વિદ્યાર્થીને દેખાતા પાના, બંનેમાં આ જ વપરાય છે (S પર આધાર નથી) */
+function resultSheetHTML(r){
+  var sc = r.school || {};
+  var th = 'border:1px solid #999;padding:5px 8px;background:#eee;color:#111;text-align:center;white-space:normal';
+  var td = 'border:1px solid #999;padding:5px 8px;text-align:center;white-space:normal';
+  var ti = 'border:0;padding:2px 4px;text-align:left;white-space:normal';
+  var pass = r.result === "ઉત્તીર્ણ";
+  return '<div class="rs-paper" style="background:#fff;color:#111;padding:22px 26px;border:1px solid #ccc;border-radius:8px;font-size:13.5px;line-height:1.6">'
+    + '<div style="text-align:center;border-bottom:2.5px solid #111;padding-bottom:10px">'
+    + (sc.board ? '<div style="font-size:12px">'+esc(sc.board)+'</div>' : '')
+    + '<div style="font-size:21px;font-weight:700;margin:3px 0">'+esc(sc.name||"શાળા")+'</div>'
+    + (sc.addr ? '<div style="font-size:12px">'+esc(sc.addr)+'</div>' : '')
+    + '<div style="font-size:16px;font-weight:700;margin-top:8px;text-decoration:underline">ગુણ પત્રક — '+esc(r.examName)+'</div></div>'
+    + '<table style="width:100%;min-width:0;margin:14px 0;font-size:13px;border-collapse:collapse"><tr>'
+    + '<td style="'+ti+'">વિદ્યાર્થીનું નામ: <b>'+esc(r.name)+'</b></td><td style="'+ti+'">જી.આર. નં.: <b>'+esc(r.gr)+'</b></td></tr><tr>'
+    + '<td style="'+ti+'">ધોરણ / વર્ગ: <b>'+esc(r.std)+(r.div ? ' / '+esc(r.div) : '')+'</b></td>'
+    + '<td style="'+ti+'">પરીક્ષા તારીખ: <b>'+esc(r.examDate||"—")+'</b></td></tr>'
+    + (r.father ? '<tr><td colspan="2" style="'+ti+'">પિતાનું નામ: <b>'+esc(r.father)+'</b></td></tr>' : '')
+    + '</table>'
+    + '<table style="border-collapse:collapse;width:100%;min-width:0;font-size:13px">'
+    + '<tr><th style="'+th+'">વિષય</th><th style="'+th+'">કુલ ગુણ</th><th style="'+th+'">મેળવેલ ગુણ</th><th style="'+th+'">ગ્રેડ</th></tr>'
+    + (r.subjects||[]).map(function(x){
+        return '<tr><td style="'+td+';text-align:left">'+esc(x.name)+'</td><td style="'+td+'">'+esc(x.max)+'</td>'
+          + '<td style="'+td+'">'+(x.got==null ? 'ગેરહાજર' : esc(x.got))+'</td><td style="'+td+'">'+esc(x.grade)+'</td></tr>';
+      }).join("")
+    + '<tr style="font-weight:700"><td style="'+td+';text-align:left">કુલ</td><td style="'+td+'">'+esc(r.max)+'</td>'
+    + '<td style="'+td+'">'+esc(r.got)+'</td><td style="'+td+'">'+esc(r.grade)+'</td></tr></table>'
+    + '<p style="margin-top:10px;font-size:13px">ટકાવારી: <b>'+Number(r.pct).toFixed(1)+'%</b> &nbsp;&nbsp; પરિણામ: '
+    + '<b style="color:'+(pass?'#166534':'#b91c1c')+'">'+esc(r.result)+'</b>'
+    + (r.rank ? ' &nbsp;&nbsp; ક્રમ: <b>'+esc(r.rank)+' / '+esc(r.outOf)+'</b>' : '')+'</p>'
+    + '<div style="margin-top:34px;display:flex;justify-content:space-between;font-size:13px">'
+    + '<div></div><div style="font-weight:700">'+esc(sc.principal||"આચાર્યશ્રી")+'<div style="font-weight:400">આચાર્યશ્રી</div></div></div>'
+    + '<p style="margin:16px 0 0;font-size:11px;color:#555;border-top:1px dashed #aaa;padding-top:6px">'
+    + 'આ ઓનલાઇન પરિણામ શાળાના રેકોર્ડ પરથી કમ્પ્યુટર દ્વારા તૈયાર થયેલ છે. સત્તાવાર ગુણપત્રક માટે શાળાનો સંપર્ક કરવો.</p>'
+    + '</div>';
+}
+VIEWS["exam:online"] = function(){
+  if (!S.exams.length) return emptyCard("પહેલાં પરીક્ષા ઉમેરો અને ગુણ ભરો.","પરિક્ષા › પરીક્ષાઓ");
+  var pageUrl = location.href.split("#")[0].split("?")[0];
+  return '<div class="card"><h3>ઓનલાઇન પરિણામ પ્રકાશિત કરો</h3>'
+    + (GAS_READY ? '' : '<div class="empty" style="color:var(--bad);margin-bottom:10px">ઓનલાઇન પરિણામ માટે Google Sheet બેકએન્ડ (GAS_URL) ચાલુ હોવું જરૂરી છે — હાલ તે ગોઠવેલ નથી, એટલે પ્રકાશિત કરી શકાશે નહીં.</div>')
+    + '<p class="hint" style="margin-top:0">પ્રકાશિત કરતાં દરેક વિદ્યાર્થીનું ગુણપત્રક સર્વર પર સચવાય છે. વિદ્યાર્થી <b>જી.આર. નંબર + જન્મ તારીખ</b> આપીને ફક્ત પોતાનું પરિણામ જોઈ અને PDF તરીકે સેવ કરી શકે છે. જન્મ તારીખ ન હોય કે ગુણ ન ભરાયા હોય તેવા વિદ્યાર્થી બાકાત રહે છે.</p>'
+    + '<div class="grid"><div><label class="f">પરીક્ષા</label><select id="on_exam">'
+    + S.exams.map(function(e){ return '<option value="'+e.id+'">'+(e.published?'✓ ':'')+esc(e.name)+' — ધોરણ '+esc(e.std)+'</option>'; }).join("")
+    + '</select></div></div>'
+    + '<div style="margin-top:10px">'+chk("on_rank","વિદ્યાર્થીને ક્રમ (rank) પણ બતાવો",false)+'</div>'
+    + '<div id="on_info" style="margin-top:12px"></div>'
+    + '<div class="row" style="margin-top:14px;gap:10px;flex-wrap:wrap">'
+    + '<button class="btn" id="on_pub">પ્રકાશિત કરો</button>'
+    + '<button class="btn warn" id="on_unpub">પ્રકાશન બંધ કરો</button></div>'
+    + '<p class="hint" id="on_status" style="margin-bottom:0"></p></div>'
+    + '<div class="card"><h3>વિદ્યાર્થી માટેની લિંક</h3>'
+    + '<p style="font-weight:700;word-break:break-all;margin:0 0 6px">'+esc(pageUrl)+'?result=1</p>'
+    + '<p class="hint" style="margin:0">આ લિંક વિદ્યાર્થીઓ/વાલીઓને WhatsApp વગેરેમાં મોકલો. આ લિંક ખોલતાં લોગિન વગર ફક્ત પરિણામનું પાનું ખૂલે છે. '
+    + 'Google Sites માં એમ્બેડ કર્યું હોય તો PDF સેવ કરવા માટે આ સીધી લિંક વાપરવી વધુ સારી.</p></div>'
+    + '<div class="card"><h3>પૂર્વાવલોકન (પહેલા વિદ્યાર્થીનું)</h3><div id="on_prev"></div></div>';
+};
+WIRE["exam:online"] = function(){
+  if (!S.exams.length) return;
+  function cur_(){ return S.exams.find(function(e){ return e.id === val("on_exam"); }); }
+  function draw(){
+    var ex = cur_(); if (!ex) return;
+    var b = buildResultSnapshots_(ex, $("on_rank").checked);
+    function names(a){ return a.slice(0,8).map(function(s){return esc(s.name);}).join(", ") + (a.length>8 ? " …+"+(a.length-8) : ""); }
+    $("on_info").innerHTML =
+      '<ul class="minilist">'
+      + '<li><span>✅ પ્રકાશિત થશે</span><span>'+b.records.length+' વિદ્યાર્થી</span></li>'
+      + '<li><span>⚠️ જન્મ તારીખ ખૂટે/ખોટી</span><span>'+(b.noDob.length ? b.noDob.length+' — '+names(b.noDob) : 'કોઈ નહીં')+'</span></li>'
+      + '<li><span>⚠️ ગુણ ભરાયા નથી</span><span>'+(b.noMarks.length ? b.noMarks.length+' — '+names(b.noMarks) : 'કોઈ નહીં')+'</span></li>'
+      + '<li><span>હાલની સ્થિતિ</span><span>'+(ex.published ? '✓ પ્રકાશિત ('+esc(ex.publishedCount||0)+' વિદ્યાર્થી, '+esc((ex.publishedAt||"").slice(0,10))+')' : 'પ્રકાશિત નથી')+'</span></li>'
+      + '</ul>';
+    $("on_prev").innerHTML = b.records.length ? resultSheetHTML(b.records[0]) : '<div class="empty">બતાવવા માટે કોઈ વિદ્યાર્થી નથી (ગુણ/જન્મ તારીખ ચકાસો).</div>';
+  }
+  $("on_exam").onchange = draw; $("on_rank").onchange = draw; draw();
+  $("on_pub").onclick = async function(){
+    if (!GAS_READY) return toast("Google Sheet બેકએન્ડ (GAS_URL) ગોઠવેલ નથી");
+    var ex = cur_(); if (!ex) return;
+    var b = buildResultSnapshots_(ex, $("on_rank").checked);
+    if (!b.records.length) return toast("પ્રકાશિત કરવા માટે કોઈ વિદ્યાર્થી નથી");
+    if (!confirm(b.records.length+" વિદ્યાર્થીનું '"+ex.name+"' નું પરિણામ ઓનલાઇન પ્રકાશિત કરવું છે?")) return;
+    $("on_pub").disabled = true; $("on_status").textContent = "પ્રકાશિત થઈ રહ્યું છે…";
+    var res;
+    try{ res = await gasPost({action:"publishResults", examId:ex.id, records:b.records}); }catch(e){ res = null; }
+    if (res && res.ok){
+      ex.published = true; ex.publishedAt = new Date().toISOString(); ex.publishedCount = b.records.length;
+      await put("exams", ex);
+      toast("પરિણામ પ્રકાશિત થયું"); render();
+    } else {
+      $("on_pub").disabled = false;
+      $("on_status").textContent = "પ્રકાશિત ન થયું: " + ((res && res.error) || "જોડાણમાં તકલીફ — Code.gs નવું Deploy કર્યું છે?");
+    }
+  };
+  $("on_unpub").onclick = async function(){
+    if (!GAS_READY) return toast("Google Sheet બેકએન્ડ (GAS_URL) ગોઠવેલ નથી");
+    var ex = cur_(); if (!ex) return;
+    if (!confirm("'"+ex.name+"' નું ઓનલાઇન પરિણામ હટાવવું છે? વિદ્યાર્થી પછી તે જોઈ શકશે નહીં.")) return;
+    var res;
+    try{ res = await gasPost({action:"unpublishResults", examId:ex.id}); }catch(e){ res = null; }
+    if (res && res.ok){
+      ex.published = false; ex.publishedAt = ""; ex.publishedCount = 0;
+      await put("exams", ex);
+      toast("પ્રકાશન બંધ કર્યું"); render();
+    } else {
+      $("on_status").textContent = "ભૂલ: " + ((res && res.error) || "જોડાણમાં તકલીફ");
+    }
+  };
+};
+
 /* ========== પુસ્તકાલય ========== */
 VIEWS["library:books"] = function(){
   return '<div class="card"><h3>નવું પુસ્તક ઉમેરો</h3><div class="grid">'
@@ -5206,15 +5392,87 @@ async function payViaRazorpay(){
   });
   rzp.open();
 }
+/* ---------- જાહેર (લોગિન વગર) પરિણામ જોવાનું પાનું ---------- */
+var RES_MODE = false;
+try{ RES_MODE = /[?&]result=1/.test(location.search); }catch(e){}
+function openResGate(){
+  $("gate").style.display = "none"; $("payGate").style.display = "none";
+  $("resGate").style.display = "grid";
+  $("rs_out").innerHTML = ""; $("rs_msg").textContent = "";
+  $("rs_formcard").style.display = "";
+}
+function closeResGate(){
+  $("resGate").style.display = "none";
+  $("gate").style.display = "grid";
+}
+function resMsg(t){ $("rs_msg").textContent = t || ""; }
+function printResult(titleText){
+  var oldTitle = document.title, done = false;
+  function cleanup(){
+    if (done) return; done = true;
+    document.body.classList.remove("pr-res"); document.title = oldTitle;
+    window.removeEventListener("afterprint", cleanup);
+  }
+  document.body.classList.add("pr-res");
+  if (titleText) document.title = titleText; /* PDF ફાઇલનું નામ આ બને */
+  window.addEventListener("afterprint", cleanup);
+  try{ window.print(); }catch(e){ cleanup(); toast("છાપવાનું શરૂ ન થયું — પૂર્ણ પાનામાં ખોલીને ફરી પ્રયત્ન કરો"); return; }
+  setTimeout(cleanup, 30000);
+}
+function showResults(list){
+  var cur_ = 0;
+  $("rs_formcard").style.display = "none";
+  function paint(){
+    var r = list[cur_];
+    $("rs_out").innerHTML =
+      '<div class="card noprint"><div class="row" style="gap:10px;flex-wrap:wrap;align-items:end">'
+      + (list.length > 1
+          ? '<div class="grow"><label class="f">પરીક્ષા</label><select id="rs_pick">'
+            + list.map(function(x,i){ return '<option value="'+i+'"'+(i===cur_?' selected':'')+'>'+esc(x.examName)+'</option>'; }).join("")
+            + '</select></div>' : '')
+      + '<div><button class="btn" id="rs_pdf">📄 PDF ડાઉનલોડ / છાપો</button></div>'
+      + '<div><button class="btn sec" id="rs_back">← બીજું પરિણામ જુઓ</button></div></div>'
+      + '<p class="hint" style="margin:8px 0 0">"PDF ડાઉનલોડ" દબાવ્યા પછી ખુલતી વિન્ડોમાં <b>Save as PDF</b> (PDF તરીકે સાચવો) પસંદ કરો.</p></div>'
+      + resultSheetHTML(r);
+    if ($("rs_pick")) $("rs_pick").onchange = function(){ cur_ = Number($("rs_pick").value) || 0; paint(); };
+    $("rs_pdf").onclick = function(){ printResult("પરિણામ-"+r.gr+"-"+r.examName); };
+    $("rs_back").onclick = function(){ $("rs_out").innerHTML = ""; $("rs_formcard").style.display = ""; resMsg(""); };
+  }
+  paint();
+}
+async function resLookup(){
+  var gr = val("rs_gr"), dob = val("rs_dob");
+  if (!gr || !dob) return resMsg("જી.આર. નંબર અને જન્મ તારીખ બંને ભરો.");
+  if (!GAS_READY) return resMsg("ઓનલાઇન પરિણામ હજુ ચાલુ થયું નથી — શાળાનો સંપર્ક કરો.");
+  $("rs_go").disabled = true; resMsg("પરિણામ શોધી રહ્યા છીએ…");
+  var res;
+  try{ res = await gasPost({action:"getResult", gr:gr, dob:dob}); }catch(e){ res = null; }
+  $("rs_go").disabled = false;
+  if (!res) return resMsg("જોડાણમાં તકલીફ પડી. ઇન્ટરનેટ ચકાસી ફરી પ્રયત્ન કરો.");
+  if (!res.ok) return resMsg(res.error || "પરિણામ મળ્યું નથી.");
+  resMsg("");
+  showResults(res.results || []);
+}
+$("lg_reslink").onclick = openResGate;
+$("rs_close").onclick = closeResGate;
+$("rs_go").onclick = resLookup;
+$("rs_dob").onkeydown = $("rs_gr").onkeydown = function(e){ if (e.key === "Enter") resLookup(); };
+
 drawMenu(); render();
-initStore().then(function(){
-  $("gateTitle").textContent = S.school.name || "શાળા વ્યવસ્થાપન સિસ્ટમ";
-  fillLoginUsers();
-  var saved = null;
-  try{ saved = sessionStorage.getItem("shala_login"); }catch(e){}
-  if (saved) enter(saved); else { drawMenu(); render(); }
-  try{ if (/[?&]pay=1/.test(location.search)) openPayGate(); }catch(e){}
-});
+if (RES_MODE){
+  /* વિદ્યાર્થી માટેની લિંક: આખો ડેટાબેઝ લોડ કરતા નથી (initStore કૉલ નહીં) — ફક્ત પરિણામ શોધ */
+  $("rs_close").style.display = "none";
+  openResGate();
+} else {
+  initStore().then(function(){
+    $("gateTitle").textContent = S.school.name || "શાળા વ્યવસ્થાપન સિસ્ટમ";
+    fillLoginUsers();
+    var saved = null;
+    try{ saved = sessionStorage.getItem("shala_login"); }catch(e){}
+    if (saved) enter(saved); else { drawMenu(); render(); }
+    try{ if (/[?&]pay=1/.test(location.search)) openPayGate(); }catch(e){}
+  });
+}
 </script>
 </body>
 </html>
