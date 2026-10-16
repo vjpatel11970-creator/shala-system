@@ -324,7 +324,7 @@ var S = {
    OR set it once per browser via: localStorage.setItem("shala_gas_url","https://script.google.com/macros/s/XXXX/exec") */
 var GAS_URL = (function(){
   try{ var o = localStorage.getItem("shala_gas_url"); if (o) return o; }catch(e){}
-  return "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+  return "https://script.google.com/macros/library/d/1qRBRIYKZimp7mA9dEGwVU-TA5sylw14fCje_rUtcJitLcRQOfiksuFgU/3";
 })();
 var GAS_READY = /^https:\/\/script\.google(usercontent)?\.com\//.test(GAS_URL);
 var LS_KEY = "shala_v1";
